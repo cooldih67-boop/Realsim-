@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RealmSim</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: Arial, sans-serif; background: #111; color: #fff; }
+  #game { display: block; width: 100vw; height: 100vh; background: #111; cursor: crosshair; }
+  #ui { position: fixed; inset: 0; pointer-events: none; }
+  .panel {
+    pointer-events: auto;
+    position: absolute;
+    background: rgba(18, 22, 28, .92);
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.35);
+    backdrop-filter: blur(8px);
+  }
+  #top {
+    top: 12px; left: 12px; right: 12px;
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  #title { font-size: 20px; font-weight: 800; margin-right: auto; }
+  button, select {
+    border: 0; border-radius: 8px; padding: 8px 11px;
+    background: #2b3440; color: white; cursor: pointer;
+    font-weight: 700;
+  }
+  button:hover, select:hover { background: #394554; }
+  button.active { background: #3b82f6; }
+  button.active:hover { background: #2f6fe0; }
+  #stats { font-size: 13px; opacity: .9; }
+  #eraInfo { font-size: 12px; opacity: .8; padding: 3px 9px; background: rgba(255,255,255,.08); border-radius: 20px; }
+  #saveStatus { font-size: 12px; opacity: .75; min-width: 90px; }
+  #person {
+    right: 12px; top: 78px; width: 260px; padding: 15px;
+    display: none;
+  }
+  #person h2 { margin: 0 0 8px; font-size: 19px; }
+  #person p { margin: 6px 0; font-size: 13px; }
+  .trait { display:inline-block; margin:3px 3px 0 0; padding:4px 7px; border-radius:20px; background:#334155; font-size:11px; }
+  #hint {
+    left: 12px; bottom: 12px; padding: 9px 12px; font-size: 12px; opacity: .85;
+  }
+  #eraBanner {
+    left: 50%; top: 14%; transform: translate(-50%,-12px);
+    padding: 12px 22px; font-size: 15px; font-weight: 800;
+    opacity: 0; transition: opacity .4s, transform .4s;
+    pointer-events: none; white-space: nowrap;
+  }
+  #eraBanner.show { opacity: 1; transform: translate(-50%,0); }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="ui">
+  <div id="top" class="panel">
+    <div id="title">🌎 RealmSim</div>
+    <div id="stats">Year 1 • Population: 0</div>
+    <div id="eraInfo">🪨 Stone Age</div>
+    <div id="saveStatus"></div>
+    <button id="pause">⏸ Pause</button>
+    <button data-speed="1">1×</button>
+    <button data-speed="3">3×</button>
+    <button data-speed="10">10×</button>
+    <button id="spawnBtn">➕ Spawn</button>
+    <button id="saveBtn">💾 Save</button>
+    <button id="loadBtn">📂 Load</button>
+    <button id="newWorld">🌎 New World</button>
+  </div>
+
+  <div id="eraBanner" class="panel"></div>
+  <div id="person" class="panel"></div>
+  <div id="hint" class="panel">Click a person to inspect them • Drag to move around • Wheel to zoom • ➕ Spawn then click land to add someone</div>
+</div>
+
+<!--
+  ============================================================
+  SUPABASE SETUP (do this once before persistence will work)
+  ============================================================
+  1. Create a free project at https://supabase.com
+  2. In the SQL editor, run:
+
+     create table worlds (
+       id text primary key,
+       seed float8,
+       year float8,
+       tech_points float8,
+       people jsonb,
+       updated_at timestamptz default now()
+     );
+
+     alter table worlds enable row level security;
+
+     create policy "public read" on worlds
+       for select using (true);
+     create policy "public write" on worlds
+       for insert with check (true);
+     create policy "public update" on worlds
+       for update using (true);
+
+     (This makes the single shared world publicly readable/writable,
+     which is fine for a simple shared sandbox game. Lock this down
+     later if you add accounts.)
+
+  3. In Settings > API, copy your Project URL and anon public key
+     into SUPABASE_URL / SUPABASE_ANON_KEY below.
+  ============================================================
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+
+<script>
+const SUPABASE_URL = "YOUR_SUPABASE_URL";
+const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+const WORLD_ID = "main"; // single shared world row
+
+let supa = null;
+try {
+  if (SUPABASE_URL.startsWith("http")) {
+    supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+} catch (e) { console.warn("Supabase not configured yet:", e); }
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const statsEl = document.getElementById("stats");
+const eraInfoEl = document.getElementById("eraInfo");
+const eraBannerEl = document.getElementById("eraBanner");
+const personEl = document.getElementById("person");
+const pauseBtn = document.getElementById("pause");
+const saveStatusEl = document.getElementById("saveStatus");
+const saveBtn = document.getElementById("saveBtn");
+const loadBtn = document.getElementById("loadBtn");
+const spawnBtn = document.getElementById("spawnBtn");
+
+let W = 0, H = 0;
+let paused = false;
+let speed = 1;
+let year = 1;
+let worldSeed = Math.random() * 999999;
+let people = [];
+let terrain = [];
+let terrainSize = 90;
+let camera = { x: 0, y: 0, zoom: 1 };
+let dragging = false;
+let lastMouse = { x: 0, y: 0 };
+let selectedId = null;
+let spawnMode = false;
+let popWarnLevel = 0; // 0 = normal, 1 = high, 2 = full — used to flash a banner only once per threshold
+
+// --- Tuning constants -------------------------------------------------
+const MAX_AGE = 85;            // near-certain death past this age
+const DEATH_START_AGE = 55;    // mortality risk starts climbing here
+const SOCIAL_RADIUS = 4;       // how far Friendly people "notice" others
+const REPRO_RADIUS = 6;        // how close two adults must be to have a child
+const EXPLORE_INTERVAL = 220;  // ticks a Curious person commits to a waypoint
+const MAX_POPULATION = 5000;   // hard cap on living people — births/spawns stop above this
+const POP_WARN_RATIO = 0.85;   // fraction of MAX_POPULATION at which a "getting crowded" warning shows
+
+// --- Civilization progress ---------------------------------------------
+// The world starts in the Stone Age. "Tech points" build up over time from
+// population size, boosted by Intelligent and Creative people, and unlock
+// later eras — including ships, which are the only way to cross water.
+let techPoints = 0;
+let eraIdx = 0;
+
+const ERAS = [
+  { name: "Stone Age",     icon: "🪨", min: 0 },
+  { name: "Bronze Age",    icon: "🔥", min: 4000 },
+  { name: "Iron Age",      icon: "⚒️", min: 12000 },
+  { name: "Classical Age", icon: "🏛️", min: 30000 },
+  { name: "Seafaring Age", icon: "🚢", min: 65000, ships: true },
+  { name: "Age of Sail",   icon: "⛵", min: 140000, ships: true }
+];
+
+function currentEraIndex() {
+  let idx = 0;
+  for (let i=0; i<ERAS.length; i++) if (techPoints >= ERAS[i].min) idx = i;
+  return idx;
+}
+function shipsUnlocked() {
+  return !!ERAS[eraIdx].ships;
+}
+function flashBanner(text, duration=4500) {
+  eraBannerEl.textContent = text;
+  eraBannerEl.classList.add("show");
+  clearTimeout(flashBanner._t);
+  flashBanner._t = setTimeout(() => eraBannerEl.classList.remove("show"), duration);
+}
+function flashEraBanner(era) {
+  flashBanner(era.ships ? `${era.icon} ${era.name} — ships have been invented!` : `${era.icon} The world has entered the ${era.name}`);
+}
+function updateEraUI() {
+  const era = ERAS[eraIdx];
+  const next = ERAS[eraIdx+1];
+  eraInfoEl.textContent = next
+    ? `${era.icon} ${era.name} (${Math.floor(techPoints)} / ${next.min})`
+    : `${era.icon} ${era.name}`;
+}
+
+const firstNames = [
+  "Ari","Milo","Lena","Kai","Nora","Eli","Maya","Theo","Zane","Iris",
+  "Leo","Nova","Evan","Lia","Owen","Mira","Finn","Ada","Jace","Rhea"
+];
+const lastNames = [
+  "Stone","Vale","River","Oak","Pine","Ash","Reed","Fox","Hill","Lake",
+  "Dawn","Wells","Frost","Meadow","North"
+];
+const traits = [
+  ["Brave","More willing to face danger. Explores coastlines and risky terrain edges."],
+  ["Intelligent","Learns and solves problems faster. Speeds up civilization's advance and passes traits on more reliably."],
+  ["Strong","Better at physical work. Lower risk of dying from old age."],
+  ["Fast","Moves around the world quicker."],
+  ["Hardworking","Collects resources more efficiently. Slightly more likely to have children."],
+  ["Friendly","More likely to socialize. Seeks out and walks toward nearby people."],
+  ["Curious","Explores more often. Periodically sets off toward distant land."],
+  ["Creative","Has a higher chance of becoming a builder. Speeds up civilization's advance."],
+  ["Lucky","Gets slightly better random outcomes. Lower death risk, better trait luck."],
+  ["Calm","Less likely to panic during danger. Steadier movement, lower death risk."]
+];
+
+function resize() {
+  W = canvas.width = window.innerWidth * devicePixelRatio;
+  H = canvas.height = window.innerHeight * devicePixelRatio;
+  canvas.style.width = window.innerWidth + "px";
+  canvas.style.height = window.innerHeight + "px";
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+function rand(seed) {
+  const x = Math.sin(seed * 12.9898 + worldSeed) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function noise(x, y) {
+  let n = 0, amp = .55, freq = .012;
+  for (let i=0; i<4; i++) {
+    const gx = Math.floor(x*freq), gy = Math.floor(y*freq);
+    const fx = x*freq-gx, fy = y*freq-gy;
+    const a = rand(gx*127.1 + gy*311.7);
+    const b = rand((gx+1)*127.1 + gy*311.7);
+    const c = rand(gx*127.1 + (gy+1)*311.7);
+    const d = rand((gx+1)*127.1 + (gy+1)*311.7);
+    const u = fx*fx*(3-2*fx), v = fy*fy*(3-2*fy);
+    n += (a*(1-u)*(1-v)+b*u*(1-v)+c*(1-u)*v+d*u*v)*amp;
+    amp *= .5; freq *= 2;
+  }
+  return n;
+}
+
+// Terrain generation is a pure function of worldSeed, so it can be
+// rebuilt deterministically after loading a saved world.
+function buildTerrain() {
+  terrain = [];
+  for (let y=0; y<terrainSize; y++) {
+    terrain[y] = [];
+    for (let x=0; x<terrainSize; x++) {
+      const edge = Math.min(x, y, terrainSize-1-x, terrainSize-1-y) / 12;
+      const n = noise(x*10, y*10) + noise(x*4+300, y*4+500)*.35;
+      terrain[y][x] = n + Math.min(edge,1)*.15;
+    }
+  }
+}
+
+function isLand(x,y) {
+  return terrain[y] && terrain[y][x] > .40;
+}
+
+function hasTrait(p, name) {
+  return p.traits.some(t => t.name === name);
+}
+
+function makeWorld() {
+  year = 1;
+  techPoints = 0;
+  eraIdx = 0;
+  camera = { x: 0, y: 0, zoom: 1 };
+  people = [];
+  worldSeed = Math.random() * 999999;
+  buildTerrain();
+  updateEraUI();
+
+  let attempts = 0;
+  while (people.length < 70 && attempts++ < 5000) {
+    const x = Math.floor(Math.random()*terrainSize);
+    const y = Math.floor(Math.random()*terrainSize);
+    if (isLand(x,y)) createPerson(x,y);
+  }
+}
+
+function createPerson(tx, ty, parents=null) {
+  let chosen = [];
+  // Intelligent and Lucky parents pass traits on more reliably.
+  if (parents) {
+    const inheritBonus = parents.some(p => hasTrait(p,"Intelligent") || hasTrait(p,"Lucky")) ? .18 : 0;
+    for (const p of parents) {
+      for (const t of p.traits) {
+        if (Math.random() < .42 + inheritBonus && !chosen.some(c=>c.name===t.name)) chosen.push(t);
+      }
+    }
+  }
+  while (chosen.length < 1 + Math.floor(Math.random()*3)) {
+    const t = traits[Math.floor(Math.random()*traits.length)];
+    if (!chosen.some(c=>c.name===t[0])) chosen.push({name:t[0], desc:t[1]});
+  }
+
+  const p = {
+    id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2),
+    name: firstNames[Math.floor(Math.random()*firstNames.length)] + " " +
+          lastNames[Math.floor(Math.random()*lastNames.length)],
+    x: tx + .5, y: ty + .5,
+    age: parents ? 0 : 8 + Math.floor(Math.random()*45),
+    traits: chosen,
+    speed: 0.012 + Math.random()*0.012,
+    direction: Math.random()*Math.PI*2,
+    hue: Math.floor(Math.random()*360),
+    alive: true,
+    waypoint: null,     // {x,y} — used by Curious explorers
+    waypointTicks: 0
+  };
+  p.baseSpeed = p.speed;
+  if (hasTrait(p,"Fast")) p.speed *= 1.35;
+  people.push(p);
+  return p;
+}
+
+// --- Death: age-based mortality, modified by traits --------------------
+function maybeDie(p) {
+  if (p.age < DEATH_START_AGE) return false;
+  let risk = (p.age - DEATH_START_AGE) / (MAX_AGE - DEATH_START_AGE);
+  risk = Math.max(0, Math.min(1, risk));
+  let chance = risk * risk * 0.00035; // per-tick chance, ramps steeply near MAX_AGE
+  if (hasTrait(p,"Strong")) chance *= 0.7;
+  if (hasTrait(p,"Calm")) chance *= 0.85;
+  if (hasTrait(p,"Lucky")) chance *= 0.6;
+  if (p.age >= MAX_AGE) chance = Math.max(chance, 0.02);
+  return Math.random() < chance;
+}
+
+// --- Movement: traits steer behavior instead of pure random walk -------
+function steer(p) {
+  // Curious: commit to a distant waypoint for a while, then wander again.
+  if (hasTrait(p,"Curious")) {
+    p.waypointTicks--;
+    if (!p.waypoint || p.waypointTicks <= 0) {
+      const canSail = shipsUnlocked();
+      let tries = 0, tx, ty;
+      do {
+        tx = Math.floor(Math.random()*terrainSize);
+        ty = Math.floor(Math.random()*terrainSize);
+        tries++;
+      } while (!canSail && !isLand(tx,ty) && tries < 30);
+      p.waypoint = { x: tx+.5, y: ty+.5 };
+      p.waypointTicks = EXPLORE_INTERVAL;
+    }
+    p.direction = Math.atan2(p.waypoint.y - p.y, p.waypoint.x - p.x);
+    return;
+  }
+
+  // Friendly: drift toward the nearest other living person, if one is close.
+  if (hasTrait(p,"Friendly")) {
+    let nearest = null, bestD = SOCIAL_RADIUS;
+    for (const other of people) {
+      if (other === p || !other.alive) continue;
+      const d = Math.hypot(other.x-p.x, other.y-p.y);
+      if (d < bestD) { bestD = d; nearest = other; }
+    }
+    if (nearest && bestD > 0.6) {
+      const target = Math.atan2(nearest.y-p.y, nearest.x-p.x);
+      // Blend toward the target rather than snapping, for natural motion.
+      p.direction = p.direction + angleDiff(p.direction, target) * 0.08;
+      return;
+    }
+  }
+
+  // Default random-walk jitter. Calm people wander more steadily (less jitter).
+  const jitterChance = hasTrait(p,"Calm") ? .006 : .012;
+  if (Math.random() < jitterChance) p.direction += (Math.random()-.5)*1.5;
+}
+
+function angleDiff(a,b) {
+  let d = (b - a) % (Math.PI*2);
+  if (d > Math.PI) d -= Math.PI*2;
+  if (d < -Math.PI) d += Math.PI*2;
+  return d;
+}
+
+// --- Reproduction: nearby adults only, some traits raise likelihood ----
+function tryReproduce() {
+  if (people.filter(p=>p.alive).length >= MAX_POPULATION) return;
+  if (Math.random() >= .01) return; // roll once per tick at most
+
+  const adults = people.filter(p => p.alive && p.age >= 18 && p.age < 55);
+  if (adults.length < 2) return;
+
+  const a = adults[Math.floor(Math.random()*adults.length)];
+  let candidates = adults.filter(b => b !== a && Math.hypot(b.x-a.x,b.y-a.y) <= REPRO_RADIUS);
+  if (!candidates.length) return;
+
+  // Weight candidates: Friendly/Hardworking/Lucky adults are more likely parents.
+  const weight = (p) => 1
+    + (hasTrait(p,"Friendly") ? .5 : 0)
+    + (hasTrait(p,"Hardworking") ? .3 : 0)
+    + (hasTrait(p,"Lucky") ? .3 : 0);
+
+  const totalWeight = candidates.reduce((s,p)=>s+weight(p), weight(a));
+  let base = weight(a);
+  if (Math.random() * totalWeight > base) {
+    let r = Math.random() * (totalWeight - base);
+    let acc = 0, b = candidates[0];
+    for (const c of candidates) {
+      acc += weight(c);
+      if (r <= acc) { b = c; break; }
+    }
+    createPerson(Math.floor((a.x+b.x)/2), Math.floor((a.y+b.y)/2), [a,b]);
+  }
+}
+
+// --- Civilization advancement: population + Intelligent/Creative people --
+function advanceCivilization() {
+  const alive = people.filter(p => p.alive);
+  if (!alive.length) return;
+  let gain = alive.length * 0.02;
+  for (const p of alive) {
+    if (hasTrait(p,"Intelligent")) gain += 0.05;
+    if (hasTrait(p,"Creative")) gain += 0.05;
+  }
+  techPoints += gain;
+
+  const newIdx = currentEraIndex();
+  if (newIdx > eraIdx) {
+    eraIdx = newIdx;
+    flashEraBanner(ERAS[eraIdx]);
+  }
+  updateEraUI();
+}
+
+function update() {
+  if (paused) return;
+
+  for (let s=0; s<speed; s++) {
+    for (const p of people) {
+      if (!p.alive) continue;
+
+      p.age += 1 / (60*60*24*30*12);
+
+      steer(p);
+
+      let nx = p.x + Math.cos(p.direction)*p.speed;
+      let ny = p.y + Math.sin(p.direction)*p.speed;
+
+      const offMap = nx < 0 || nx >= terrainSize || ny < 0 || ny >= terrainSize;
+      const blockedByWater = !offMap && !shipsUnlocked() && !isLand(Math.floor(nx),Math.floor(ny));
+
+      if (offMap || blockedByWater) {
+        // Brave people turn back less sharply — they hug coastlines and edges.
+        const turn = hasTrait(p,"Brave") ? Math.PI * (.25 + Math.random()*.25)
+                                          : Math.PI * (.6 + Math.random()*.5);
+        p.direction += turn;
+      } else if (!isLand(Math.floor(nx),Math.floor(ny))) {
+        // Sailing across water (ships unlocked) is slower than walking on land.
+        p.x += (nx-p.x) * 0.4;
+        p.y += (ny-p.y) * 0.4;
+      } else {
+        p.x = nx; p.y = ny;
+      }
+
+      if (maybeDie(p)) p.alive = false;
+    }
+
+    tryReproduce();
+    advanceCivilization();
+
+    if (people.length > MAX_POPULATION + 500) people = people.filter(p => p.alive);
+
+    year += 1 / 12000;
+  }
+}
+
+function worldToScreen(x,y) {
+  const cell = Math.min(window.innerWidth, window.innerHeight) / terrainSize * 1.7 * camera.zoom;
+  const ox = window.innerWidth/2 - terrainSize*cell/2 + camera.x;
+  const oy = window.innerHeight/2 - terrainSize*cell/2 + camera.y;
+  return { x: ox+x*cell, y: oy+y*cell, cell };
+}
+
+function screenToWorld(mx,my) {
+  const cell = Math.min(window.innerWidth, window.innerHeight) / terrainSize * 1.7 * camera.zoom;
+  const ox = window.innerWidth/2 - terrainSize*cell/2 + camera.x;
+  const oy = window.innerHeight/2 - terrainSize*cell/2 + camera.y;
+  return { x: (mx-ox)/cell, y: (my-oy)/cell };
+}
+
+function draw() {
+  ctx.clearRect(0,0,window.innerWidth,window.innerHeight);
+
+  const cell = Math.min(window.innerWidth, window.innerHeight) / terrainSize * 1.7 * camera.zoom;
+  const ox = window.innerWidth/2 - terrainSize*cell/2 + camera.x;
+  const oy = window.innerHeight/2 - terrainSize*cell/2 + camera.y;
+
+  ctx.fillStyle = "#152536";
+  ctx.fillRect(0,0,window.innerWidth,window.innerHeight);
+
+  for (let y=0; y<terrainSize; y++) {
+    for (let x=0; x<terrainSize; x++) {
+      const v = terrain[y][x];
+      if (v <= .40) {
+        ctx.fillStyle = v < .24 ? "#102d48" : "#174563";
+      } else if (v > .78) {
+        ctx.fillStyle = "#77756a";
+      } else if (v > .67) {
+        ctx.fillStyle = "#5f7650";
+      } else {
+        ctx.fillStyle = "#3f7048";
+      }
+      ctx.fillRect(ox+x*cell, oy+y*cell, cell+1, cell+1);
+    }
+  }
+
+  for (const p of people) {
+    if (!p.alive) continue;
+    const s = worldToScreen(p.x,p.y);
+    const r = Math.max(2.5, 4*camera.zoom);
+    ctx.beginPath();
+    ctx.arc(s.x,s.y,r,0,Math.PI*2);
+    ctx.fillStyle = `hsl(${p.hue} 75% 65%)`;
+    ctx.fill();
+    ctx.strokeStyle = p.id===selectedId ? "#fff" : "rgba(0,0,0,.45)";
+    ctx.lineWidth = p.id===selectedId ? 2 : 1;
+    ctx.stroke();
+  }
+
+  const aliveCount = people.filter(p=>p.alive).length;
+  let statsText = `Year ${Math.floor(year)} • Population: ${aliveCount.toLocaleString()}`;
+
+  if (aliveCount >= MAX_POPULATION) {
+    statsText += ` ⚠️ FULL`;
+    statsEl.style.color = "#ff6b6b";
+    if (popWarnLevel < 2) { popWarnLevel = 2; flashBanner(`⚠️ Population capped at ${MAX_POPULATION.toLocaleString()} — no new births or spawns until some die off.`); }
+  } else if (aliveCount >= MAX_POPULATION * POP_WARN_RATIO) {
+    statsText += ` ⚠️ High`;
+    statsEl.style.color = "#ffb020";
+    if (popWarnLevel < 1) { popWarnLevel = 1; flashBanner(`⚠️ Population is getting crowded (${aliveCount.toLocaleString()})`); }
+  } else {
+    statsEl.style.color = "";
+    if (aliveCount < MAX_POPULATION * POP_WARN_RATIO * 0.9) popWarnLevel = 0; // hysteresis so it can warn again later
+  }
+  statsEl.textContent = statsText;
+
+  if (selectedId) {
+    const p = people.find(pp => pp.id === selectedId);
+    if (p && p.alive) showPerson(p); else { personEl.style.display="none"; selectedId=null; }
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function showPerson(p) {
+  personEl.style.display = "block";
+  personEl.innerHTML = `
+    <h2>👤 ${p.name}</h2>
+    <p><b>Age:</b> ${Math.floor(p.age)}</p>
+    <p><b>Position:</b> ${Math.floor(p.x)}, ${Math.floor(p.y)}</p>
+    <p><b>Traits:</b></p>
+    <div>${p.traits.map(t=>`<span class="trait" title="${t.desc}">${t.name}</span>`).join("")}</div>
+  `;
+}
+
+canvas.addEventListener("pointerdown", e => {
+  dragging = true;
+  lastMouse = {x:e.clientX,y:e.clientY};
+});
+
+window.addEventListener("pointerup", () => dragging=false);
+
+canvas.addEventListener("pointermove", e => {
+  if (!dragging) return;
+  camera.x += e.clientX-lastMouse.x;
+  camera.y += e.clientY-lastMouse.y;
+  lastMouse = {x:e.clientX,y:e.clientY};
+});
+
+canvas.addEventListener("click", e => {
+  const mx = e.clientX, my = e.clientY;
+
+  if (spawnMode) {
+    const w = screenToWorld(mx, my);
+    const tx = Math.floor(w.x), ty = Math.floor(w.y);
+    if (tx < 0 || ty < 0 || tx >= terrainSize || ty >= terrainSize) return;
+
+    const aliveCount = people.filter(p=>p.alive).length;
+    if (aliveCount >= MAX_POPULATION) {
+      flashBanner(`⚠️ Population capped at ${MAX_POPULATION.toLocaleString()} — can't spawn anyone else right now.`);
+      return;
+    }
+    if (!shipsUnlocked() && !isLand(tx,ty)) {
+      flashBanner(`🌊 Can't spawn in open water until ships are invented.`);
+      return;
+    }
+    createPerson(tx, ty);
+    return;
+  }
+
+  let closest = null, best = 15;
+  for (const p of people) {
+    if (!p.alive) continue;
+    const s = worldToScreen(p.x,p.y);
+    const d = Math.hypot(s.x-mx,s.y-my);
+    if (d < best) { best=d; closest=p; }
+  }
+  if (closest) { selectedId = closest.id; showPerson(closest); }
+});
+
+spawnBtn.onclick = () => {
+  spawnMode = !spawnMode;
+  spawnBtn.classList.toggle("active", spawnMode);
+  spawnBtn.textContent = spawnMode ? "➕ Click to place…" : "➕ Spawn";
+  canvas.style.cursor = spawnMode ? "copy" : "crosshair";
+};
+
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  camera.zoom *= e.deltaY < 0 ? 1.1 : .9;
+  camera.zoom = Math.max(.45,Math.min(3.5,camera.zoom));
+}, {passive:false});
+
+pauseBtn.onclick = () => {
+  paused = !paused;
+  pauseBtn.textContent = paused ? "▶ Resume" : "⏸ Pause";
+};
+
+document.querySelectorAll("[data-speed]").forEach(btn => {
+  btn.onclick = () => speed = Number(btn.dataset.speed);
+});
+
+document.getElementById("newWorld").onclick = () => {
+  personEl.style.display = "none";
+  selectedId = null;
+  popWarnLevel = 0;
+  spawnMode = false;
+  spawnBtn.classList.remove("active");
+  spawnBtn.textContent = "➕ Spawn";
+  canvas.style.cursor = "crosshair";
+  makeWorld();
+};
+
+// --- Supabase persistence ----------------------------------------------
+function setStatus(text, timeout) {
+  saveStatusEl.textContent = text;
+  if (timeout) setTimeout(() => { if (saveStatusEl.textContent===text) saveStatusEl.textContent=""; }, timeout);
+}
+
+async function saveWorld() {
+  if (!supa) { setStatus("⚠ Supabase not configured", 3000); return; }
+  setStatus("Saving…");
+  const payload = {
+    id: WORLD_ID,
+    seed: worldSeed,
+    year: year,
+    tech_points: techPoints,
+    people: people.filter(p=>p.alive),
+    updated_at: new Date().toISOString()
+  };
+  const { error } = await supa.from("worlds").upsert(payload);
+  setStatus(error ? "⚠ Save failed" : "✓ Saved", 2500);
+  if (error) console.error(error);
+}
+
+async function loadWorld() {
+  if (!supa) { setStatus("⚠ Supabase not configured", 3000); return; }
+  setStatus("Loading…");
+  const { data, error } = await supa.from("worlds").select("*").eq("id", WORLD_ID).single();
+  if (error || !data) { setStatus("⚠ No saved world", 2500); return; }
+  worldSeed = data.seed;
+  buildTerrain();
+  people = data.people || [];
+  year = data.year || 1;
+  techPoints = data.tech_points || 0;
+  eraIdx = currentEraIndex();
+  updateEraUI();
+  personEl.style.display = "none";
+  selectedId = null;
+  setStatus("✓ Loaded", 2500);
+}
+
+saveBtn.onclick = saveWorld;
+loadBtn.onclick = loadWorld;
+
+// Auto-save every 30s so the shared world persists without manual saves.
+setInterval(() => { if (!paused && supa) saveWorld(); }, 30000);
+
+makeWorld();
+loop();
+</script>
+</body>
+</html>
