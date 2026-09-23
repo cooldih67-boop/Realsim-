@@ -179,7 +179,7 @@ function era(){
 }
 
 function resize(){
-  DPR=Math.min(devicePixelRatio||1,2);
+  DPR=1;
   W=innerWidth;H=innerHeight;
   canvas.width=Math.floor(W*DPR);
   canvas.height=Math.floor(H*DPR);
@@ -605,8 +605,12 @@ function formKingdoms(){
 function organizeArmies(){
   if(simYear<3500)return;
   for(const k of kingdoms){
-    const soldiers=people.filter(p=>p.alive&&p.kingdom===k&&(hasTrait(p,"Warrior")||hasTrait(p,"Brave")));
-    k.soldiers=soldiers;
+    k.soldiers=[];
+  }
+  for(const p of people){
+    if(!p.alive||!p.kingdom)continue;
+    if(hasTrait(p,"Warrior")||hasTrait(p,"Brave"))
+      p.kingdom.soldiers.push(p);
   }
 }
 
@@ -789,7 +793,6 @@ function draw(){
   drawDisasters();
   drawArmies();
   drawPeople();
-  updateStats();
 }
 
 function drawTerrain(){
@@ -813,22 +816,23 @@ function drawTerrain(){
 }
 
 function drawKingdomTerritories(){
+  // Sample members so large kingdoms don't repaint thousands of overlapping
+  // translucent rectangles every animation frame.
   for(const k of kingdoms){
-    const members=people.filter(p=>p.alive&&p.kingdom===k);
-    if(!members.length)continue;
-
-    ctx.globalAlpha=.10;
+    let count=0;
+    ctx.globalAlpha=.07;
     ctx.fillStyle=k.color;
 
-    for(const p of members){
+    for(const p of people){
+      if(!p.alive||p.kingdom!==k)continue;
+      if((count++ % 4)!==0)continue;
       ctx.fillRect(
-        Math.floor(p.x-2)*CELL,
-        Math.floor(p.y-2)*CELL,
-        CELL*5,
-        CELL*5
+        Math.floor(p.x-1)*CELL,
+        Math.floor(p.y-1)*CELL,
+        CELL*3,
+        CELL*3
       );
     }
-
     ctx.globalAlpha=1;
   }
 }
@@ -1035,6 +1039,7 @@ function showPerson(p){
   const role=roleFor(p);
 
   box.innerHTML=`
+    <button id="closeInspector" style="float:right">✕</button>
     <h3>👤 ${p.name}</h3>
     <p><b>Role:</b> ${role}</p>
     <p><b>Age:</b> ${Math.floor(p.age)}</p>
@@ -1051,6 +1056,12 @@ function showPerson(p){
     <p><b>Lifetime:</b> ${Math.floor(p.age)} years</p>
     <p><b>Battles won:</b> ${p.kills}</p>
   `;
+
+  document.getElementById("closeInspector").onclick=()=>{
+    box.style.display="none";
+    selectedPerson=null;
+    selectedKingdom=null;
+  };
 
   document.getElementById("addTrait").onclick=()=>{
     const value=document.getElementById("traitChoice").value;
@@ -1072,6 +1083,7 @@ function showKingdom(k){
   const wars=[...k.atWarWith];
 
   box.innerHTML=`
+    <button id="closeInspector" style="float:right">✕</button>
     <h3>👑 ${k.name}</h3>
     <p><b>Leader:</b> ${k.leader?k.leader.name:"Unknown"}</p>
     <p><b>Population:</b> ${members.length}</p>
@@ -1080,6 +1092,12 @@ function showKingdom(k){
     <p><b>Status:</b> ${wars.length?"⚔️ At war":"🕊️ Peace"}</p>
     ${wars.length?`<p><b>Enemies:</b><br>${wars.map(x=>`<span class="tag">${x.name}</span>`).join("")}</p>`:""}
   `;
+
+  document.getElementById("closeInspector").onclick=()=>{
+    box.style.display="none";
+    selectedPerson=null;
+    selectedKingdom=null;
+  };
 }
 
 /* =========================================================
@@ -1091,6 +1109,7 @@ function showHistory(){
   box.style.display="block";
 
   box.innerHTML=`
+    <button id="closeInspector" style="float:right">✕</button>
     <h3>📜 Civilization History</h3>
     <p><b>Current era:</b> ${era().name}</p>
     <p><b>Year:</b> ${Math.floor(simYear)}</p>
@@ -1113,6 +1132,12 @@ function showHistory(){
     <p><b>Recent events:</b></p>
     ${events.slice(0,20).map(e=>`<div class="event"><b>${e.year}</b> ${e.text}</div>`).join("")}
   `;
+
+  document.getElementById("closeInspector").onclick=()=>{
+    box.style.display="none";
+    selectedPerson=null;
+    selectedKingdom=null;
+  };
 }
 
 /* =========================================================
@@ -1222,9 +1247,12 @@ document.getElementById("newWorld").onclick=()=>{
    GAME LOOP
    ========================================================= */
 
+let frame=0;
 function loop(){
   simulate();
   draw();
+  frame++;
+  if(frame%8===0) updateStats();
   requestAnimationFrame(loop);
 }
 
