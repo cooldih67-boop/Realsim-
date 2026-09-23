@@ -1,459 +1,1235 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Realsim</title>
 <style>
-  *{box-sizing:border-box}
-  html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101722;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-  canvas{display:block;width:100%;height:100%;image-rendering:pixelated;touch-action:none}
-  #ui{position:fixed;inset:0;pointer-events:none}
-  .top{
-    position:absolute;top:12px;left:12px;right:12px;
-    display:flex;align-items:center;justify-content:space-between;gap:8px;
-  }
-  .panel{
-    background:rgba(12,18,28,.88);border:2px solid rgba(255,255,255,.12);
-    color:white;border-radius:14px;padding:9px 12px;box-shadow:0 8px 24px #0005;
-    backdrop-filter:blur(8px);pointer-events:auto;
-  }
-  #title{font-weight:900;letter-spacing:.5px}
-  #stats{font-size:12px;line-height:1.35}
-  #tools{
-    position:absolute;left:50%;bottom:14px;transform:translateX(-50%);
-    display:flex;gap:7px;max-width:96vw;overflow:auto;padding:6px;
-    background:rgba(12,18,28,.9);border:2px solid rgba(255,255,255,.12);
-    border-radius:17px;pointer-events:auto;box-shadow:0 8px 28px #0007;
-  }
-  button{
-    border:0;border-radius:11px;padding:10px 12px;background:#263449;color:white;
-    font-weight:800;white-space:nowrap;cursor:pointer
-  }
-  button.active{background:#54b7ff;color:#07111d}
-  button:active{transform:scale(.96)}
-  #hint{
-    position:absolute;left:50%;top:74px;transform:translateX(-50%);
-    color:#fff;background:#0008;border-radius:12px;padding:8px 12px;font-size:12px;
-    pointer-events:none;text-align:center
-  }
-  #personCard{
-    position:absolute;right:12px;bottom:80px;width:min(270px,calc(100vw - 24px));
-    display:none
-  }
-  .trait{display:inline-block;background:#263449;border-radius:8px;padding:4px 7px;margin:3px 2px;font-size:11px}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#10151c;font-family:system-ui,-apple-system,sans-serif}
+canvas{display:block;width:100%;height:100%;image-rendering:pixelated;touch-action:none}
+#ui{position:fixed;inset:0;color:#fff;pointer-events:none}
+.panel{background:rgba(17,22,29,.94);border:2px solid rgba(255,255,255,.12);border-radius:12px;box-shadow:0 8px 28px #0008;pointer-events:auto}
+#top{position:absolute;left:10px;right:10px;top:10px;padding:8px 10px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+#logo{font-size:18px;font-weight:950;margin-right:auto}
+#stats{font-size:11px;opacity:.92}
+button,select{border:0;border-radius:9px;background:#2b3543;color:#fff;padding:8px 10px;font-weight:800}
+button:hover{background:#3b495a}
+button.active{background:#72b9ff;color:#06101a}
+#tools{position:absolute;top:72px;left:10px;width:54px;padding:6px;display:flex;flex-direction:column;gap:6px}
+.tool{width:40px;height:40px;padding:0;font-size:18px}
+#right{position:absolute;right:10px;top:72px;width:min(300px,calc(100vw - 20px));max-height:70vh;overflow:auto;padding:11px;display:none}
+#right h3{margin:0 0 7px}
+#right p{font-size:12px;margin:7px 0}
+.tag{display:inline-block;background:#344253;border-radius:8px;padding:4px 7px;margin:2px;font-size:11px}
+#events{position:absolute;left:72px;bottom:12px;width:min(360px,calc(100vw - 84px));max-height:190px;overflow:auto;padding:9px;font-size:11px}
+.event{padding:5px 0;border-bottom:1px solid #ffffff14}
+.event b{color:#8fd0ff}
+#time{position:absolute;right:10px;bottom:12px;padding:7px;display:flex;gap:5px;align-items:center}
+#hint{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);padding:7px 10px;font-size:11px}
+.hidden{display:none!important}
+@media(max-width:700px){#events{bottom:68px;left:10px;width:calc(100vw - 20px);max-height:130px}#hint{display:none}#right{top:120px}}
 </style>
 </head>
 <body>
 <canvas id="world"></canvas>
+
 <div id="ui">
-  <div class="top">
-    <div class="panel" id="title">🌎 REALSIM</div>
-    <div class="panel" id="stats">Water world</div>
+  <div id="top" class="panel">
+    <div id="logo">🌎 REALSIM</div>
+    <div id="stats"></div>
+    <button id="pause">⏸</button>
+    <button id="slower">🐢</button>
+    <button id="faster">⚡</button>
+    <button id="newWorld">🌎 New</button>
   </div>
-  <div id="hint">Pick a tool, then tap or drag on the world.</div>
-  <div id="tools">
-    <button class="active" data-tool="land">🏝️ Add Land</button>
-    <button data-tool="erase">🌊 Water</button>
-    <button data-tool="tree">🌳 Trees</button>
-    <button data-tool="people">👤 People</button>
-    <button data-tool="house">🏠 House</button>
-    <button id="pause">⏸ Pause</button>
-    <button id="reset">↻ New World</button>
+
+  <div id="tools" class="panel">
+    <button class="tool active" data-tool="land" title="Add land">🏝️</button>
+    <button class="tool" data-tool="water" title="Add water">🌊</button>
+    <button class="tool" data-tool="tree" title="Trees">🌳</button>
+    <button class="tool" data-tool="people" title="People">🧍</button>
+    <button class="tool" data-tool="house" title="House">🏠</button>
+    <button class="tool" data-tool="kingdom" title="Kingdom">👑</button>
+    <button class="tool" id="historyBtn" title="History">📜</button>
   </div>
-  <div class="panel" id="personCard"></div>
+
+  <div id="right" class="panel"></div>
+
+  <div id="events" class="panel">
+    <b>📜 HISTORY</b>
+    <div id="eventList"></div>
+  </div>
+
+  <div id="hint" class="panel">Create land, then watch civilizations grow.</div>
+
+  <div id="time" class="panel">
+    <select id="speed">
+      <option value=".25">0.25× · 1.25 yr/s</option>
+      <option value=".5">0.5× · 2.5 yr/s</option>
+      <option value="1" selected>1× · 5 yr/s</option>
+      <option value="2">2× · 10 yr/s</option>
+      <option value="5">5× · 25 yr/s</option>
+      <option value="10">10× · 50 yr/s</option>
+      <option value="25">25× · 125 yr/s</option>
+    </select>
+  </div>
 </div>
 
 <script>
 "use strict";
 
-const canvas = document.getElementById("world");
-const ctx = canvas.getContext("2d");
-ctx.imageSmoothingEnabled = false;
+/* =========================================================
+   REALSIM WORLD
+   ========================================================= */
 
-let W=0,H=0,DPR=1;
-let cell=12;
-let cols=0,rows=0;
+const canvas=document.getElementById("world");
+const ctx=canvas.getContext("2d");
+ctx.imageSmoothingEnabled=false;
+
+let W=0,H=0,DPR=1,CELL=12,COLS=0,ROWS=0;
 let terrain=[];
 let trees=[];
 let houses=[];
 let people=[];
-let year=1;
+let kingdoms=[];
+let armies=[];
+let events=[];
+let inventions=new Set();
+let disasters=[];
+let naturalObjects=[];
+
+let simYear=1;
+let speed=1;
 let paused=false;
-let selectedTool="land";
+let tool="land";
 let selectedPerson=null;
-let last=performance.now();
-let spawnTimer=0;
+let selectedKingdom=null;
+
+const YEARS_PER_SECOND=5;
+
+const ERAS=[
+  {name:"Stone Age",start:0},
+  {name:"Tribal Age",start:500},
+  {name:"Farming Age",start:1000},
+  {name:"Bronze Age",start:2000},
+  {name:"Iron Age",start:3000},
+  {name:"Kingdom Age",start:4500},
+  {name:"Empire Age",start:7000},
+  {name:"Industrial Age",start:10000},
+  {name:"Modern Age",start:14000},
+  {name:"Future Age",start:19000}
+];
 
 const TRAITS=[
-  "Curious","Friendly","Brave","Hardworking","Fast","Calm","Social","Explorer"
+  "Brave","Intelligent","Strong","Fast","Hardworking","Friendly",
+  "Curious","Creative","Lucky","Calm","Builder","Farmer","Leader",
+  "Warrior","Explorer","Strategist"
 ];
-const SKIN=["#f0b38a","#d99168","#a96745","#7a4935"];
-const HAIR=["#33251e","#5b3825","#171717","#8a5a32","#d5a34b"];
-const SHIRT=["#e45757","#4b82e8","#58a866","#d39b3d","#9b65c7","#e4e4e4"];
+
+const ROLES=[
+  "Caveman","Civilian","Farmer","Builder","Warrior",
+  "Soldier","General","King","Queen","Merchant","Inventor"
+];
+
+const FIRST=[
+  "Ari","Milo","Lena","Kai","Nora","Eli","Maya","Theo","Zane","Iris",
+  "Leo","Nova","Evan","Lia","Owen","Mira","Finn","Ada","Jace","Rhea",
+  "Taro","Kira","Niko","Sora","Vera","Rin","Omar","Lumi","Dax","Yara",
+  "Cato","Mina","Kian","Sena","Arlo","Nia","Tess","Rowan","Ezra","Skye"
+];
+
+const LAST=[
+  "Stone","Vale","River","Oak","Pine","Ash","Reed","Fox","Hill","Lake",
+  "Dawn","Wells","Frost","Meadow","North","Wolf","Rain","Cedar","Field",
+  "Ridge","Rock","Grove","Flint","Cove","Star","Moss","Clay","Dune"
+];
+
+const SKIN=["#f0b38a","#d99168","#a96745","#70432f"];
+const HAIR=["#241b17","#543422","#151515","#8b5a32","#d5a34b"];
+const SHIRT=["#d9534f","#4e86d9","#58a866","#d39b3d","#9b65c7","#dedede"];
+
+const INVENTIONS=[
+  {year:0,name:"Fire",icon:"🔥",need:0},
+  {year:650,name:"Stone Tools",icon:"🪨",need:0},
+  {year:1100,name:"Farming",icon:"🌾",need:0},
+  {year:1700,name:"Pottery",icon:"🏺",need:0},
+  {year:2200,name:"Bronze",icon:"🥉",need:0},
+  {year:3000,name:"Iron",icon:"⛓️",need:0},
+  {year:3500,name:"Swords",icon:"⚔️",need:0},
+  {year:4300,name:"Writing",icon:"📜",need:0},
+  {year:4800,name:"Kingdoms",icon:"👑",need:0},
+  {year:5500,name:"Roads",icon:"🛣️",need:0},
+  {year:6200,name:"Castles",icon:"🏰",need:0},
+  {year:7200,name:"Ships",icon:"⛵",need:0},
+  {year:9000,name:"Printing",icon:"📰",need:0},
+  {year:10200,name:"Steam Power",icon:"⚙️",need:0},
+  {year:11500,name:"Factories",icon:"🏭",need:0},
+  {year:13000,name:"Electricity",icon:"💡",need:0},
+  {year:14500,name:"Cars",icon:"🚗",need:0},
+  {year:15500,name:"Computers",icon:"💻",need:0},
+  {year:17000,name:"Satellites",icon:"🛰️",need:0},
+  {year:19000,name:"Advanced Spaceflight",icon:"🚀",need:0}
+];
+
+function era(){
+  let e=ERAS[0];
+  for(const x of ERAS)if(simYear>=x.start)e=x;
+  return e;
+}
 
 function resize(){
   DPR=Math.min(devicePixelRatio||1,2);
-  W=innerWidth; H=innerHeight;
+  W=innerWidth;H=innerHeight;
   canvas.width=Math.floor(W*DPR);
   canvas.height=Math.floor(H*DPR);
-  canvas.style.width=W+"px"; canvas.style.height=H+"px";
+  canvas.style.width=W+"px";
+  canvas.style.height=H+"px";
   ctx.setTransform(DPR,0,0,DPR,0,0);
-  cell=Math.max(8,Math.floor(Math.min(W,H)/48));
-  cols=Math.ceil(W/cell)+2;
-  rows=Math.ceil(H/cell)+2;
-  makeWaterWorld();
+  CELL=Math.max(8,Math.floor(Math.min(W,H)/46));
+  COLS=Math.ceil(W/CELL)+2;
+  ROWS=Math.ceil(H/CELL)+2;
+  newWorld();
 }
 addEventListener("resize",resize);
 
-function makeWaterWorld(){
-  terrain=Array.from({length:rows},()=>Array(cols).fill(0));
-  trees=[]; houses=[]; people=[]; year=1; selectedPerson=null;
-  // A few tiny starter sand pixels keep the map visually alive, but it is still
-  // essentially an ocean until the player adds land.
-  for(let i=0;i<6;i++){
-    const x=2+Math.floor(Math.random()*(cols-4));
-    const y=2+Math.floor(Math.random()*(rows-4));
-    terrain[y][x]=1;
-  }
+function newWorld(){
+  terrain=Array.from({length:ROWS},()=>Array(COLS).fill(0));
+  trees=[];houses=[];people=[];kingdoms=[];armies=[];
+  events=[];inventions=new Set();disasters=[];naturalObjects=[];simYear=1;
+  selectedPerson=null;selectedKingdom=null;
+  addEvent("The world begins as a vast ocean.");
+  refreshEvents();
 }
 
-function inside(x,y){return x>=0&&y>=0&&x<cols&&y<rows}
+/* =========================================================
+   HELPERS
+   ========================================================= */
+
+function inside(x,y){return x>=0&&y>=0&&x<COLS&&y<ROWS}
 function isLand(x,y){return inside(x,y)&&terrain[y][x]>0}
 
 function screenCell(e){
   const r=canvas.getBoundingClientRect();
   return {
-    x:Math.floor((e.clientX-r.left)/cell),
-    y:Math.floor((e.clientY-r.top)/cell)
+    x:Math.floor((e.clientX-r.left)/CELL),
+    y:Math.floor((e.clientY-r.top)/CELL)
   };
 }
 
-function paint(e){
-  const {x,y}=screenCell(e);
-  if(!inside(x,y))return;
-  if(selectedTool==="land"){
-    brush(x,y,1);
-  } else if(selectedTool==="erase"){
-    brush(x,y,0);
-  } else if(selectedTool==="tree"){
-    if(isLand(x,y)) addTree(x,y);
-  } else if(selectedTool==="people"){
-    if(isLand(x,y) && people.length<250) createPerson(x+.5,y+.5,[]);
-  } else if(selectedTool==="house"){
-    if(isLand(x,y)) addHouse(x,y);
-  }
-}
-let painting=false;
-canvas.addEventListener("pointerdown",e=>{painting=true;canvas.setPointerCapture(e.pointerId);paint(e)});
-canvas.addEventListener("pointermove",e=>{if(painting)paint(e)});
-canvas.addEventListener("pointerup",()=>painting=false);
-canvas.addEventListener("pointercancel",()=>painting=false);
-
-function brush(cx,cy,val){
-  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-    const x=cx+dx,y=cy+dy;
-    if(inside(x,y))terrain[y][x]=val;
-  }
+function brush(cx,cy,value){
+  for(let dy=-1;dy<=1;dy++)
+    for(let dx=-1;dx<=1;dx++){
+      const x=cx+dx,y=cy+dy;
+      if(inside(x,y))terrain[y][x]=value;
+    }
 }
 
-function addTree(x,y){
-  if(trees.some(t=>t.x===x&&t.y===y))return;
-  trees.push({x,y,age:0});
-}
-function addHouse(x,y){
-  if(houses.some(h=>Math.hypot(h.x-x,h.y-y)<1.2))return;
-  houses.push({x,y,age:0});
+function randomName(){
+  let n;
+  do{
+    n=FIRST[Math.floor(Math.random()*FIRST.length)]+" "+
+      LAST[Math.floor(Math.random()*LAST.length)];
+  }while(people.some(p=>p.name===n));
+  return n;
 }
 
 function randomTraits(){
-  const out=[];
-  for(const t of TRAITS) if(Math.random()<.23)out.push({name:t});
-  if(!out.length) out.push({name:TRAITS[Math.floor(Math.random()*TRAITS.length)]});
-  return out;
+  const a=[];
+  for(const t of TRAITS)if(Math.random()<.15)a.push({name:t});
+  if(!a.length)a.push({name:TRAITS[Math.floor(Math.random()*TRAITS.length)]});
+  return a;
 }
-function has(p,name){return p.traits.some(t=>t.name===name)}
 
-function createPerson(x,y,parents){
-  const traits=parents.length
-    ? inheritedTraits(parents)
-    : randomTraits();
+function hasTrait(p,t){return p.traits.some(x=>x.name===t)}
 
-  const p={
-    id:crypto.randomUUID?crypto.randomUUID():String(Math.random()),
-    x,y,age:parents.length?0:18+Math.random()*34,
-    direction:Math.random()*Math.PI*2,
-    speed:.018+Math.random()*.014,
-    baseSpeed:0,
-    traits,
-    skin:parents.length?(Math.random()<.5?parents[0].skin:parents[1].skin):SKIN[Math.floor(Math.random()*SKIN.length)],
-    hair:parents.length?(Math.random()<.5?parents[0].hair:parents[1].hair):HAIR[Math.floor(Math.random()*HAIR.length)],
-    shirt:SHIRT[Math.floor(Math.random()*SHIRT.length)],
-    alive:true,
-    home:null
-  };
-  p.baseSpeed=p.speed;
-  people.push(p);
-  return p;
-}
-function inheritedTraits(parents){
+function inheritedTraits(a,b){
   const out=[];
   for(const t of TRAITS){
-    if(parents.some(p=>has(p,t)) && Math.random()<.72)out.push({name:t});
-    else if(Math.random()<.06)out.push({name:t});
+    if(hasTrait(a,t)||hasTrait(b,t)){
+      if(Math.random()<.68)out.push({name:t});
+    }else if(Math.random()<.035){
+      out.push({name:t});
+    }
   }
   if(!out.length)out.push({name:TRAITS[Math.floor(Math.random()*TRAITS.length)]});
   return out;
 }
 
-function adult(p){return p.age>=18&&p.age<65}
-function nearestFriend(p){
-  let best=null,bd=9;
+function roleFor(p){
+  if(simYear<500)return "Caveman";
+  if(simYear<1000)return hasTrait(p,"Farmer")?"Farmer":"Civilian";
+  if(simYear<3000)return hasTrait(p,"Builder")?"Builder":(hasTrait(p,"Farmer")?"Farmer":"Civilian");
+  if(simYear>=4500&&p.kingdom){
+    if(p.kingdom.leader===p)return "King";
+    if(hasTrait(p,"Leader")&&Math.random()<.01)return "General";
+    if(hasTrait(p,"Warrior")||hasTrait(p,"Brave"))return "Soldier";
+  }
+  if(simYear>=7000&&hasTrait(p,"Creative"))return "Inventor";
+  if(hasTrait(p,"Farmer"))return "Farmer";
+  if(hasTrait(p,"Builder"))return "Builder";
+  return "Civilian";
+}
+
+function createPerson(x,y,parents=[]){
+  const p={
+    id:Math.random().toString(36).slice(2),
+    name:randomName(),
+    x,y,
+    age:parents.length?0:8+Math.random()*35,
+    dir:Math.random()*Math.PI*2,
+    speed:.018+Math.random()*.012,
+    traits:parents.length?inheritedTraits(parents[0],parents[1]):randomTraits(),
+    skin:parents.length?(Math.random()<.5?parents[0].skin:parents[1].skin):SKIN[Math.floor(Math.random()*SKIN.length)],
+    hair:parents.length?(Math.random()<.5?parents[0].hair:parents[1].hair):HAIR[Math.floor(Math.random()*HAIR.length)],
+    shirt:SHIRT[Math.floor(Math.random()*SHIRT.length)],
+    kingdom:null,
+    home:null,
+    alive:true,
+    kills:0
+  };
+  people.push(p);
+  return p;
+}
+
+function addTree(x,y){
+  if(isLand(x,y)&&!trees.some(t=>t.x===x&&t.y===y))trees.push({x,y});
+}
+
+function addHouse(x,y,kingdom=null){
+  if(isLand(x,y)&&!houses.some(h=>h.x===x&&h.y===y))
+    houses.push({x,y,kingdom});
+}
+
+function kingdomName(){
+  const a=["Oak","River","Stone","Sun","Moon","Iron","Cedar","Frost","Golden","Red","Silver","Green"];
+  const b=["Kingdom","Realm","Empire","Tribe","Dynasty"];
+  return a[Math.floor(Math.random()*a.length)]+" "+
+         b[Math.floor(Math.random()*b.length)]+" "+(kingdoms.length+1);
+}
+
+function createKingdom(founder){
+  if(founder.kingdom)return founder.kingdom;
+  const k={
+    id:kingdoms.length+1,
+    name:kingdomName(),
+    leader:founder,
+    color:`hsl(${Math.floor(Math.random()*360)} 65% 55%)`,
+    territory:[],
+    soldiers:[],
+    power:1,
+    atWarWith:new Set()
+  };
+  kingdoms.push(k);
+  founder.kingdom=k;
+  addEvent(`${founder.name} founded the ${k.name}.`);
+  unlockInvention("Kingdoms");
+  return k;
+}
+
+function addEvent(text){
+  events.unshift({year:Math.floor(simYear),text});
+  if(events.length>80)events.pop();
+}
+
+function unlockInvention(name){
+  if(inventions.has(name))return;
+  inventions.add(name);
+  const inv=INVENTIONS.find(x=>x.name===name);
+  addEvent(`${inv?inv.icon:"✨"} Civilization acquired ${name}.`);
+  refreshEvents();
+}
+
+function refreshEvents(){
+  document.getElementById("eventList").innerHTML=events.slice(0,14)
+    .map(e=>`<div class="event"><b>Year ${e.year}</b> ${e.text}</div>`).join("");
+}
+
+
+/* =========================================================
+   NATURAL WORLD EVENTS & DISASTERS
+   ========================================================= */
+
+const DISASTER_TYPES=[
+  {name:"Wildfire",icon:"🔥",minYear:0,weight:3},
+  {name:"Flood",icon:"🌊",minYear:0,weight:3},
+  {name:"Drought",icon:"☀️",minYear:500,weight:2},
+  {name:"Earthquake",icon:"🌋",minYear:1000,weight:2},
+  {name:"Volcanic Eruption",icon:"🌋",minYear:2000,weight:1},
+  {name:"Storm",icon:"🌪️",minYear:0,weight:3},
+  {name:"Meteor",icon:"☄️",minYear:3000,weight:.35}
+];
+
+const NATURAL_SPAWNS=[
+  {name:"Deer",icon:"🦌",minYear:0},
+  {name:"Wolves",icon:"🐺",minYear:0},
+  {name:"Fish",icon:"🐟",minYear:0},
+  {name:"Berries",icon:"🫐",minYear:0},
+  {name:"Wild Grain",icon:"🌾",minYear:400},
+  {name:"Ore Vein",icon:"⛏️",minYear:1800},
+  {name:"Gold Deposit",icon:"🪙",minYear:3000},
+  {name:"Rare Crystal",icon:"💎",minYear:9000}
+];
+
+function randomLandCell(){
+  for(let i=0;i<80;i++){
+    const x=Math.floor(Math.random()*COLS);
+    const y=Math.floor(Math.random()*ROWS);
+    if(isLand(x,y))return {x,y};
+  }
+  return null;
+}
+
+function spawnNaturalThing(){
+  if(Math.random()>.0007)return;
+  const choices=NATURAL_SPAWNS.filter(x=>simYear>=x.minYear);
+  if(!choices.length)return;
+  const type=choices[Math.floor(Math.random()*choices.length)];
+  const spot=randomLandCell();
+  if(!spot)return;
+
+  naturalObjects.push({
+    ...type,
+    x:spot.x,
+    y:spot.y,
+    age:0
+  });
+
+  if(naturalObjects.length>180)
+    naturalObjects.shift();
+
+  addEvent(`${type.icon} ${type.name} appeared naturally in the world.`);
+  refreshEvents();
+}
+
+function chooseDisaster(){
+  const available=DISASTER_TYPES.filter(d=>simYear>=d.minYear);
+  let total=available.reduce((n,d)=>n+d.weight,0);
+  let roll=Math.random()*total;
+  for(const d of available){
+    roll-=d.weight;
+    if(roll<=0)return d;
+  }
+  return available[0];
+}
+
+function triggerDisaster(){
+  // Disasters are uncommon and only happen while the simulation is running.
+  if(simYear<50||Math.random()>.00012)return;
+
+  const type=chooseDisaster();
+  const spot=randomLandCell();
+  if(!spot)return;
+
+  const radius=type.name==="Meteor"?2:1+Math.floor(Math.random()*3);
+
+  const disaster={
+    type:type.name,
+    icon:type.icon,
+    x:spot.x,
+    y:spot.y,
+    radius,
+    ttl:420,
+    year:Math.floor(simYear)
+  };
+
+  disasters.push(disaster);
+
+  if(type.name==="Wildfire"){
+    for(const t of trees){
+      if(Math.hypot(t.x-spot.x,t.y-spot.y)<=radius) t.burned=true;
+    }
+    addEvent(`🔥 A wildfire started near year ${Math.floor(simYear)}.`);
+  }
+
+  if(type.name==="Flood"){
+    for(const p of people){
+      if(p.alive&&Math.hypot(p.x-spot.x,p.y-spot.y)<=radius){
+        p.dir+=Math.PI;
+      }
+    }
+    addEvent(`🌊 A flood struck the region.`);
+  }
+
+  if(type.name==="Drought"){
+    addEvent(`☀️ A drought began. Farming communities are under pressure.`);
+  }
+
+  if(type.name==="Earthquake"){
+    for(const h of houses){
+      if(Math.hypot(h.x-spot.x,h.y-spot.y)<=radius) h.damaged=true;
+    }
+    addEvent(`🌋 An earthquake shook the land.`);
+  }
+
+  if(type.name==="Volcanic Eruption"){
+    for(let y=spot.y-radius;y<=spot.y+radius;y++)
+      for(let x=spot.x-radius;x<=spot.x+radius;x++)
+        if(inside(x,y)&&Math.hypot(x-spot.x,y-spot.y)<=radius)
+          terrain[y][x]=0;
+    addEvent(`🌋 A volcano erupted and reshaped the land.`);
+  }
+
+  if(type.name==="Storm"){
+    addEvent(`🌪️ A powerful storm crossed the region.`);
+  }
+
+  if(type.name==="Meteor"){
+    for(const h of houses){
+      if(Math.hypot(h.x-spot.x,h.y-spot.y)<=radius) h.damaged=true;
+    }
+    addEvent(`☄️ A meteor struck the world.`);
+  }
+
+  if(disasters.length>12)disasters.shift();
+  refreshEvents();
+}
+
+function updateDisasters(){
+  for(const d of disasters)d.ttl--;
+  disasters=disasters.filter(d=>d.ttl>0);
+
+  for(const t of trees){
+    if(t.burned&&Math.random()<.02)t.burned=false;
+  }
+
+  for(const h of houses){
+    if(h.damaged&&Math.random()<.008)h.damaged=false;
+  }
+}
+
+function spawnNaturalPeople(){
+  if(Math.random()>.0005||people.length>=320)return;
+  const spot=randomLandCell();
+  if(!spot)return;
+  const p=createPerson(spot.x+.5,spot.y+.5);
+  p.age=1+Math.random()*15;
+  addEvent(`🧍 ${p.name} naturally joined the world.`);
+}
+
+
+/* =========================================================
+   CIVILIZATION PROGRESSION
+   ========================================================= */
+
+function checkInventions(){
+  for(const inv of INVENTIONS){
+    if(simYear>=inv.year)unlockInvention(inv.name);
+  }
+
+  if(Math.floor(simYear)===500)addEvent("The first tribes begin forming.");
+  if(Math.floor(simYear)===1000)addEvent("People begin settling into permanent farming communities.");
+  if(Math.floor(simYear)===2000)addEvent("Bronze Age civilization emerges.");
+  if(Math.floor(simYear)===3000)addEvent("Ironworking changes tools and warfare.");
+  if(Math.floor(simYear)===4500)addEvent("The Kingdom Age begins.");
+  if(Math.floor(simYear)===7000)addEvent("Large empires begin competing for territory.");
+  if(Math.floor(simYear)===10000)addEvent("The Industrial Age begins.");
+  if(Math.floor(simYear)===14000)addEvent("Modern civilization begins.");
+  if(Math.floor(simYear)===19000)addEvent("Future civilization begins.");
+}
+
+let lastMilestone=-1;
+function checkMilestones(){
+  const m=Math.floor(simYear/100);
+  if(m!==lastMilestone){
+    lastMilestone=m;
+    if(m>0&&m%5===0){
+      addEvent(`The world has reached year ${Math.floor(simYear)}.`);
+      refreshEvents();
+    }
+  }
+}
+
+/* =========================================================
+   PEOPLE, BUILDINGS, KINGDOMS, WARS
+   ========================================================= */
+
+function nearestPerson(p,range){
+  let best=null,dist=range;
   for(const q of people){
     if(q===p||!q.alive)continue;
     const d=Math.hypot(q.x-p.x,q.y-p.y);
-    if(d<bd){bd=d;best=q}
+    if(d<dist){dist=d;best=q}
   }
   return best;
 }
 
-function update(dt){
-  if(paused)return;
+function naturalGrowth(){
+  if(people.length>=320)return;
+  if(Math.random()>.0012)return;
 
-  // Simulation speed is intentionally gentle so the tiny world is watchable.
-  const steps=3;
-  for(let s=0;s<steps;s++){
-    for(const p of people){
-      if(!p.alive)continue;
-      p.age += 1/(60*60*24*30*12);
+  const adults=people.filter(p=>p.alive&&p.age>=18&&p.age<50);
+  if(adults.length<2)return;
 
-      let turn=.012;
-      if(has(p,"Curious"))turn=.025;
-      if(Math.random()<turn)p.direction+=(Math.random()-.5)*(has(p,"Curious")?2.5:1.5);
+  const a=adults[Math.floor(Math.random()*adults.length)];
+  const b=adults[Math.floor(Math.random()*adults.length)];
+  if(a===b)return;
 
-      if(has(p,"Friendly")||has(p,"Social")){
-        const f=nearestFriend(p);
-        if(f){
-          const target=Math.atan2(f.y-p.y,f.x-p.x);
-          p.direction += Math.atan2(Math.sin(target-p.direction),Math.cos(target-p.direction))*.08;
-        }
-      }
+  const baby=createPerson(
+    Math.floor((a.x+b.x)/2),
+    Math.floor((a.y+b.y)/2),
+    [a,b]
+  );
 
-      let movement=p.baseSpeed;
-      if(has(p,"Hardworking"))movement*=.95;
-      if(has(p,"Fast"))movement*=1.3;
-      if(has(p,"Brave"))movement*=1.08;
+  if(a.kingdom&&b.kingdom===a.kingdom)baby.kingdom=a.kingdom;
+}
 
-      const nx=p.x+Math.cos(p.direction)*movement;
-      const ny=p.y+Math.sin(p.direction)*movement;
+function naturalBuildings(){
+  if(Math.random()>.0015)return;
+  const builders=people.filter(p=>p.alive&&isLand(Math.floor(p.x),Math.floor(p.y)));
+  if(!builders.length)return;
 
-      if(!isLand(Math.floor(nx),Math.floor(ny))){
-        p.direction+=Math.PI*(.6+Math.random()*.5);
-      }else{
-        p.x=nx;p.y=ny;
-      }
-
-      // People can settle near land and make a home.
-      if(adult(p)&&!p.home&&Math.random()<.00035&&houses.length<70){
-        const hx=Math.floor(p.x),hy=Math.floor(p.y);
-        if(isLand(hx,hy)){
-          addHouse(hx,hy);
-          p.home=houses[houses.length-1];
-        }
-      }
-    }
-
-    // Slow natural population growth, using the traits/parents system.
-    if(people.length<250 && Math.random()<.0009){
-      const adults=people.filter(p=>adult(p));
-      if(adults.length>=2){
-        const a=adults[Math.floor(Math.random()*adults.length)];
-        let b=adults[Math.floor(Math.random()*adults.length)];
-        if(a!==b){
-          createPerson(Math.floor((a.x+b.x)/2),Math.floor((a.y+b.y)/2),[a,b]);
-        }
-      }
-    }
-
-    // Tiny chance for nature to appear naturally once land exists.
-    if(trees.length<180 && Math.random()<.002){
-      const x=1+Math.floor(Math.random()*(cols-2));
-      const y=1+Math.floor(Math.random()*(rows-2));
-      if(isLand(x,y))addTree(x,y);
-    }
-
-    year+=1/12000;
+  const p=builders[Math.floor(Math.random()*builders.length)];
+  if(simYear>=1000&&houses.length<100){
+    addHouse(Math.floor(p.x),Math.floor(p.y),p.kingdom);
+    p.home=houses[houses.length-1];
   }
 }
+
+function formKingdoms(){
+  if(simYear<4500||kingdoms.length>=12)return;
+  if(Math.random()>.0008)return;
+
+  const candidates=people.filter(p=>p.alive&&!p.kingdom&&p.age>=25);
+  if(!candidates.length)return;
+
+  const founder=candidates[Math.floor(Math.random()*candidates.length)];
+  createKingdom(founder);
+
+  for(const p of people){
+    if(p.alive&&!p.kingdom&&Math.hypot(p.x-founder.x,p.y-founder.y)<4&&Math.random()<.5)
+      p.kingdom=founder.kingdom;
+  }
+}
+
+function organizeArmies(){
+  if(simYear<3500)return;
+  for(const k of kingdoms){
+    const soldiers=people.filter(p=>p.alive&&p.kingdom===k&&(hasTrait(p,"Warrior")||hasTrait(p,"Brave")));
+    k.soldiers=soldiers;
+  }
+}
+
+function startWar(){
+  if(simYear<4500||kingdoms.length<2||Math.random()>.0007)return;
+
+  const a=kingdoms[Math.floor(Math.random()*kingdoms.length)];
+  let b=kingdoms[Math.floor(Math.random()*kingdoms.length)];
+  if(a===b)return;
+
+  if(a.atWarWith.has(b))return;
+
+  a.atWarWith.add(b);
+  b.atWarWith.add(a);
+
+  const armyA={kingdom:a,target:b,strength:Math.max(1,a.soldiers.length),x:a.leader.x,y:a.leader.y};
+  const armyB={kingdom:b,target:a,strength:Math.max(1,b.soldiers.length),x:b.leader.x,y:b.leader.y};
+
+  armies.push(armyA,armyB);
+
+  addEvent(`⚔️ WAR! ${a.name} declared war on ${b.name}.`);
+  refreshEvents();
+}
+
+function updateWars(){
+  if(!armies.length)return;
+
+  for(const army of armies){
+    if(!army.target)continue;
+
+    const target=army.target;
+    const leader=target.leader;
+    if(!leader||!leader.alive)continue;
+
+    const dx=leader.x-army.x;
+    const dy=leader.y-army.y;
+    const d=Math.hypot(dx,dy);
+
+    if(d>.5){
+      army.x+=dx/d*.025;
+      army.y+=dy/d*.025;
+    }else{
+      resolveBattle(army);
+    }
+  }
+
+  armies=armies.filter(a=>a.strength>0&&a.target);
+}
+
+function resolveBattle(army){
+  const enemy=army.target;
+  const enemyArmy=armies.find(a=>a.kingdom===enemy&&a.target===army.kingdom);
+
+  if(!enemyArmy)return;
+
+  const aPower=army.strength*(.8+Math.random()*.7);
+  const bPower=enemyArmy.strength*(.8+Math.random()*.7);
+
+  if(aPower>bPower){
+    enemyArmy.strength=Math.max(0,enemyArmy.strength-Math.ceil(aPower/3));
+    army.strength=Math.max(0,army.strength-Math.ceil(bPower/5));
+    addEvent(`⚔️ ${army.kingdom.name} won a battle against ${enemy.name}.`);
+  }else{
+    army.strength=Math.max(0,army.strength-Math.ceil(aPower/5));
+    enemyArmy.strength=Math.max(0,enemyArmy.strength-Math.ceil(bPower/3));
+    addEvent(`⚔️ ${enemy.name} won a battle against ${army.kingdom.name}.`);
+  }
+
+  if(enemyArmy.strength<=0||army.strength<=0){
+    const loser=enemyArmy.strength<=0?enemy:army.kingdom;
+    const winner=loser===enemy?army.kingdom:enemy;
+
+    winner.power+=1;
+    loser.power=Math.max(.1,loser.power-.5);
+
+    addEvent(`🏆 ${winner.name} won the battle and captured territory.`);
+    endWar(army.kingdom,enemy);
+  }
+}
+
+function endWar(a,b){
+  a.atWarWith.delete(b);
+  b.atWarWith.delete(a);
+  armies=armies.filter(x=>x.kingdom!==a||x.target!==b);
+  armies=armies.filter(x=>x.kingdom!==b||x.target!==a);
+  addEvent(`🕊️ ${a.name} and ${b.name} ended their war.`);
+}
+
+/* =========================================================
+   SIMULATION CLOCK
+   ========================================================= */
+
+let yearAccumulator=0;
+
+function simulate(){
+  if(paused)return;
+
+  const yearsThisFrame=YEARS_PER_SECOND*speed/60;
+  yearAccumulator+=yearsThisFrame;
+
+  while(yearAccumulator>=1){
+    yearAccumulator-=1;
+    simYear++;
+
+    updatePeople();
+    naturalGrowth();
+    naturalBuildings();
+    formKingdoms();
+    organizeArmies();
+    updateWars();
+    spawnNaturalThing();
+    spawnNaturalPeople();
+    triggerDisaster();
+    updateDisasters();
+    checkInventions();
+    checkMilestones();
+  }
+}
+
+function updatePeople(){
+  for(const p of people){
+    if(!p.alive)continue;
+
+    p.age+=1/12;
+
+    if(p.age>88&&Math.random()<.0008){
+      p.alive=false;
+      if(p.kingdom) p.kingdom.power=Math.max(.1,p.kingdom.power-.1);
+      addEvent(`${p.name} died at age ${Math.floor(p.age)}.`);
+      continue;
+    }
+
+    const role=roleFor(p);
+
+    let turn=.012;
+    if(hasTrait(p,"Curious"))turn=.025;
+    if(Math.random()<turn)
+      p.dir+=(Math.random()-.5)*(hasTrait(p,"Curious")?2.5:1.4);
+
+    if(hasTrait(p,"Friendly")||hasTrait(p,"Social")){
+      const friend=nearestPerson(p,6);
+      if(friend){
+        const target=Math.atan2(friend.y-p.y,friend.x-p.x);
+        p.dir+=Math.atan2(
+          Math.sin(target-p.dir),
+          Math.cos(target-p.dir)
+        )*.05;
+      }
+    }
+
+    let movement=p.speed;
+    if(hasTrait(p,"Fast"))movement*=1.25;
+    if(role==="Soldier"||role==="Warrior")movement*=1.05;
+
+    const nx=p.x+Math.cos(p.dir)*movement;
+    const ny=p.y+Math.sin(p.dir)*movement;
+
+    if(!isLand(Math.floor(nx),Math.floor(ny))){
+      p.dir+=Math.PI*(.6+Math.random()*.5);
+    }else{
+      p.x=nx;p.y=ny;
+    }
+
+    if(role==="King"&&p.kingdom)p.kingdom.leader=p;
+  }
+}
+
+/* =========================================================
+   RENDERING
+   ========================================================= */
 
 function draw(){
   ctx.clearRect(0,0,W,H);
-  ctx.fillStyle="#2277b9";
-  ctx.fillRect(0,0,W,H);
 
-  for(let y=0;y<rows;y++){
-    for(let x=0;x<cols;x++){
-      const px=x*cell,py=y*cell;
-      if(terrain[y][x]){
-        const nearWater =
-          !isLand(x-1,y)||!isLand(x+1,y)||!isLand(x,y-1)||!isLand(x,y+1);
-        ctx.fillStyle=nearWater?"#77b957":"#63a94d";
-        ctx.fillRect(px,py,cell,cell);
-        if(Math.random()<0.0004){
-          ctx.fillStyle="#86c866";
-          ctx.fillRect(px+2,py+2,2,2);
-        }
-      }else{
-        ctx.fillStyle="#2581c4";
-        ctx.fillRect(px,py,cell,cell);
-      }
-    }
-  }
-
-  // Pixel trees.
-  for(const t of trees){
-    const x=t.x*cell,y=t.y*cell;
-    ctx.fillStyle="#68452b";
-    ctx.fillRect(x+cell*.42,y+cell*.48,Math.max(2,cell*.16),cell*.42);
-    ctx.fillStyle="#2e7d3c";
-    ctx.fillRect(x+cell*.15,y+cell*.16,cell*.7,cell*.52);
-    ctx.fillStyle="#3d994b";
-    ctx.fillRect(x+cell*.28,y+cell*.05,cell*.42,cell*.35);
-  }
-
-  // Pixel houses.
-  for(const h of houses){
-    const x=h.x*cell,y=h.y*cell;
-    ctx.fillStyle="#d6a05b";
-    ctx.fillRect(x+1,y+cell*.38,cell-2,cell*.5);
-    ctx.fillStyle="#8b4c39";
-    ctx.beginPath();
-    ctx.moveTo(x,y+cell*.4);ctx.lineTo(x+cell/2,y+1);ctx.lineTo(x+cell,y+cell*.4);ctx.closePath();ctx.fill();
-    ctx.fillStyle="#75b6d6";
-    ctx.fillRect(x+cell*.42,y+cell*.55,cell*.16,cell*.22);
-  }
-
-  // Chunky pixel people.
-  for(const p of people){
-    if(!p.alive)continue;
-    drawPerson(p);
-  }
-
+  drawTerrain();
+  drawKingdomTerritories();
+  drawTrees();
+  drawNaturalObjects();
+  drawHouses();
+  drawDisasters();
+  drawArmies();
+  drawPeople();
   updateStats();
 }
 
+function drawTerrain(){
+  for(let y=0;y<ROWS;y++){
+    for(let x=0;x<COLS;x++){
+      const px=x*CELL,py=y*CELL;
+
+      if(terrain[y][x]){
+        const edge=
+          !isLand(x-1,y)||!isLand(x+1,y)||
+          !isLand(x,y-1)||!isLand(x,y+1);
+
+        ctx.fillStyle=edge?"#78b75a":"#64a64e";
+      }else{
+        ctx.fillStyle="#257fbd";
+      }
+
+      ctx.fillRect(px,py,CELL+1,CELL+1);
+    }
+  }
+}
+
+function drawKingdomTerritories(){
+  for(const k of kingdoms){
+    const members=people.filter(p=>p.alive&&p.kingdom===k);
+    if(!members.length)continue;
+
+    ctx.globalAlpha=.10;
+    ctx.fillStyle=k.color;
+
+    for(const p of members){
+      ctx.fillRect(
+        Math.floor(p.x-2)*CELL,
+        Math.floor(p.y-2)*CELL,
+        CELL*5,
+        CELL*5
+      );
+    }
+
+    ctx.globalAlpha=1;
+  }
+}
+
+function drawTrees(){
+  for(const t of trees){
+    const x=t.x*CELL,y=t.y*CELL;
+
+    ctx.fillStyle=t.burned?"#2b2520":"#67452b";
+    ctx.fillRect(
+      x+CELL*.42,
+      y+CELL*.45,
+      Math.max(2,CELL*.16),
+      CELL*.45
+    );
+
+    ctx.fillStyle="#2f813d";
+    ctx.fillRect(
+      x+CELL*.12,
+      y+CELL*.12,
+      CELL*.76,
+      CELL*.52
+    );
+
+    ctx.fillStyle="#4b9d49";
+    ctx.fillRect(
+      x+CELL*.30,
+      y,
+      CELL*.40,
+      CELL*.30
+    );
+  }
+}
+
+function drawHouses(){
+  for(const h of houses){
+    const x=h.x*CELL,y=h.y*CELL;
+
+    ctx.fillStyle=h.damaged?"#6b5746":"#d3a15e";
+    ctx.fillRect(x+1,y+CELL*.38,CELL-2,CELL*.50);
+
+    ctx.fillStyle=h.kingdom?h.kingdom.color:"#8b4c3c";
+    ctx.beginPath();
+    ctx.moveTo(x,y+CELL*.4);
+    ctx.lineTo(x+CELL/2,y);
+    ctx.lineTo(x+CELL,y+CELL*.4);
+    ctx.fill();
+
+    ctx.fillStyle="#6eb3d2";
+    ctx.fillRect(x+CELL*.43,y+CELL*.56,CELL*.14,CELL*.20);
+  }
+}
+
+
+function drawNaturalObjects(){
+  for(const n of naturalObjects){
+    const x=n.x*CELL+CELL/2;
+    const y=n.y*CELL+CELL/2;
+    ctx.font=`${Math.max(10,CELL*.9)}px serif`;
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    ctx.fillText(n.icon,x,y);
+  }
+}
+
+function drawDisasters(){
+  for(const d of disasters){
+    const x=d.x*CELL+CELL/2;
+    const y=d.y*CELL+CELL/2;
+    const pulse=1+Math.sin(d.ttl*.08)*.12;
+
+    ctx.save();
+    ctx.globalAlpha=Math.min(1,d.ttl/80);
+    ctx.strokeStyle="#fff";
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.arc(x,y,d.radius*CELL*pulse,0,Math.PI*2);
+    ctx.stroke();
+
+    ctx.font=`${Math.max(14,CELL*1.2)}px serif`;
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    ctx.fillText(d.icon,x,y);
+    ctx.restore();
+  }
+}
+
+function drawArmies(){
+  for(const army of armies){
+    const x=Math.round(army.x*CELL);
+    const y=Math.round(army.y*CELL);
+
+    ctx.fillStyle=army.kingdom.color;
+    ctx.fillRect(x-3,y-3,7,7);
+
+    ctx.fillStyle="#fff";
+    ctx.fillRect(x-1,y-6,2,3);
+
+    ctx.fillStyle="#ffcf3a";
+    ctx.fillRect(x-1,y-1,3,3);
+  }
+}
+
+function drawPeople(){
+  for(const p of people){
+    if(p.alive)drawPerson(p);
+  }
+}
+
 function drawPerson(p){
-  const x=Math.round(p.x*cell), y=Math.round(p.y*cell);
-  const scale=Math.max(1,Math.floor(cell/6));
-  const w=5*scale,h=7*scale;
-  const bob=Math.floor((performance.now()/180)%2)*scale;
-  ctx.save();
-  ctx.translate(x-w/2,y-h/2-bob);
+  const x=Math.round(p.x*CELL);
+  const y=Math.round(p.y*CELL);
+  const s=Math.max(1,Math.floor(CELL/6));
+  const role=roleFor(p);
 
-  // Shadow
-  ctx.fillStyle="#0004";
-  ctx.fillRect(-w*.45,h*.82,w*.9,scale);
+  const bodyW=5*s;
+  const bodyH=8*s;
 
-  // Legs
-  ctx.fillStyle="#493a35";
-  ctx.fillRect(scale*1,scale*5,scale*1.3,scale*2);
-  ctx.fillRect(scale*3,scale*5,scale*1.3,scale*2);
+  ctx.fillStyle="#0005";
+  ctx.fillRect(x-bodyW*.45,y+bodyH*.30,bodyW*.9,s);
 
-  // Shirt/body
-  ctx.fillStyle=p.shirt;
-  ctx.fillRect(scale*.7,scale*2.5,scale*3.7,scale*3);
+  /* Role-specific silhouettes */
+  if(role==="King"||role==="Queen"){
+    ctx.fillStyle="#f0c52e";
+    ctx.fillRect(x-2*s,y-bodyH*.55,4*s,s);
+    ctx.fillRect(x-s,y-bodyH*.70,2*s,s);
+  }
 
-  // Arms
-  ctx.fillRect(0,scale*3,scale,scale*2.2);
-  ctx.fillRect(scale*4,scale*3,scale,scale*2.2);
+  if(role==="Soldier"||role==="General"||role==="Warrior"){
+    ctx.fillStyle="#7c8790";
+    ctx.fillRect(x-2*s,y-bodyH*.48,4*s,2*s);
+  }
 
-  // Head
+  if(role==="Caveman"){
+    ctx.fillStyle="#7d5a39";
+    ctx.fillRect(x-2*s,y-bodyH*.08,4*s,3*s);
+  }
+
   ctx.fillStyle=p.skin;
-  ctx.fillRect(scale*1,scale*.7,scale*3,scale*2.2);
+  ctx.fillRect(x-1.5*s,y-bodyH*.47,3*s,2.2*s);
 
-  // Hair
   ctx.fillStyle=p.hair;
-  ctx.fillRect(scale*1,0,scale*3.2,scale*.95);
-  ctx.fillRect(scale*.7,scale*.55,scale*.8,scale*1.3);
+  ctx.fillRect(x-1.6*s,y-bodyH*.55,3.2*s,s);
+  ctx.fillRect(x-1.8*s,y-bodyH*.45,s,s*1.2);
 
-  // One-pixel face detail
-  ctx.fillStyle="#202020";
-  ctx.fillRect(scale*3.25,scale*1.45,Math.max(1,scale*.45),Math.max(1,scale*.45));
+  ctx.fillStyle=p.shirt;
+  ctx.fillRect(x-2*s,y-bodyH*.10,4*s,3*s);
 
-  ctx.restore();
+  if(role==="Farmer"){
+    ctx.fillStyle="#b98945";
+    ctx.fillRect(x-3*s,y-bodyH*.08,s,3*s);
+  }
+
+  if(role==="Builder"){
+    ctx.fillStyle="#8a5b32";
+    ctx.fillRect(x+2*s,y-bodyH*.0,2*s,s);
+  }
+
+  if(role==="Soldier"||role==="General"||role==="Warrior"){
+    ctx.fillStyle="#57402e";
+    ctx.fillRect(x+3*s,y-bodyH*.05,s,4*s);
+  }
+
+  if(role==="King"||role==="Queen"){
+    ctx.fillStyle="#f0c52e";
+    ctx.fillRect(x-1.8*s,y-bodyH*.78,3.6*s,s);
+  }
+
+  ctx.fillStyle="#493b35";
+  ctx.fillRect(x-1.2*s,y+bodyH*.12,s*1.2,2*s);
+  ctx.fillRect(x+.2*s,y+bodyH*.12,s*1.2,2*s);
 
   if(selectedPerson===p){
     ctx.strokeStyle="#fff";
     ctx.lineWidth=2;
-    ctx.strokeRect(x-w/2-3,y-h/2-3,w+6,h+6);
+    ctx.strokeRect(
+      x-bodyW/2-3,
+      y-bodyH/2-3,
+      bodyW+6,
+      bodyH+6
+    );
   }
 }
 
 function updateStats(){
-  const land=terrain.flat().filter(Boolean).length;
-  const pop=people.filter(p=>p.alive).length;
-  document.getElementById("stats").innerHTML=
-    `Year ${Math.floor(year)} · 👤 ${pop} · 🏠 ${houses.length} · 🌳 ${trees.length} · 🟩 ${land}`;
+  const alive=people.filter(p=>p.alive).length;
+  const wars=kingdoms.filter(k=>k.atWarWith.size>0).length/2;
+
+  document.getElementById("stats").textContent=
+    `${era().name} · Year ${Math.floor(simYear)} · `+
+    `👤 ${alive} · 👑 ${kingdoms.length} · `+
+    `⚔️ ${Math.floor(wars)} · 🏠 ${houses.length}`;
 }
 
-function selectPersonAt(e){
-  if(selectedTool!=="people")return;
-  const {x,y}=screenCell(e);
-  let best=null,bd=1.3;
-  for(const p of people){
-    const d=Math.hypot(p.x-x,p.y-y);
-    if(d<bd){bd=d;best=p}
-  }
-  if(best){
-    selectedPerson=best;
-    showPerson(best);
-  }
-}
-canvas.addEventListener("click",e=>{
-  if(selectedTool==="people")selectPersonAt(e);
-});
+/* =========================================================
+   INSPECTORS
+   ========================================================= */
 
 function showPerson(p){
-  const card=document.getElementById("personCard");
-  card.style.display="block";
-  card.innerHTML=
-    `<b>👤 Person</b><br>
-     Age: ${Math.floor(p.age)}<br>
-     Traits:<br>${p.traits.map(t=>`<span class="trait">${t.name}</span>`).join("")}`;
-  setTimeout(()=>{if(selectedPerson===p)card.style.display="none"},5000);
+  selectedPerson=p;
+  const box=document.getElementById("right");
+  box.style.display="block";
+
+  const role=roleFor(p);
+
+  box.innerHTML=`
+    <h3>👤 ${p.name}</h3>
+    <p><b>Role:</b> ${role}</p>
+    <p><b>Age:</b> ${Math.floor(p.age)}</p>
+    <p><b>Kingdom:</b> ${p.kingdom?p.kingdom.name:"Independent"}</p>
+    <p><b>Traits:</b></p>
+    <div>
+      ${p.traits.map(t=>`<span class="tag">${t.name}</span>`).join("")}
+    </div>
+    <p><b>Add a trait:</b></p>
+    <select id="traitChoice">
+      ${TRAITS.filter(t=>!hasTrait(p,t)).map(t=>`<option>${t}</option>`).join("")}
+    </select>
+    <button id="addTrait">Add</button>
+    <p><b>Lifetime:</b> ${Math.floor(p.age)} years</p>
+    <p><b>Battles won:</b> ${p.kills}</p>
+  `;
+
+  document.getElementById("addTrait").onclick=()=>{
+    const value=document.getElementById("traitChoice").value;
+    if(value&&!hasTrait(p,value)){
+      p.traits.push({name:value});
+      addEvent(`${p.name} acquired the trait ${value}.`);
+      refreshEvents();
+      showPerson(p);
+    }
+  };
+}
+
+function showKingdom(k){
+  selectedKingdom=k;
+  const box=document.getElementById("right");
+  box.style.display="block";
+
+  const members=people.filter(p=>p.alive&&p.kingdom===k);
+  const wars=[...k.atWarWith];
+
+  box.innerHTML=`
+    <h3>👑 ${k.name}</h3>
+    <p><b>Leader:</b> ${k.leader?k.leader.name:"Unknown"}</p>
+    <p><b>Population:</b> ${members.length}</p>
+    <p><b>Soldiers:</b> ${k.soldiers.length}</p>
+    <p><b>Power:</b> ${k.power.toFixed(1)}</p>
+    <p><b>Status:</b> ${wars.length?"⚔️ At war":"🕊️ Peace"}</p>
+    ${wars.length?`<p><b>Enemies:</b><br>${wars.map(x=>`<span class="tag">${x.name}</span>`).join("")}</p>`:""}
+  `;
+}
+
+/* =========================================================
+   HISTORY / INVENTIONS
+   ========================================================= */
+
+function showHistory(){
+  const box=document.getElementById("right");
+  box.style.display="block";
+
+  box.innerHTML=`
+    <h3>📜 Civilization History</h3>
+    <p><b>Current era:</b> ${era().name}</p>
+    <p><b>Year:</b> ${Math.floor(simYear)}</p>
+    <p><b>Inventions & discoveries:</b></p>
+    <div>
+      ${INVENTIONS
+        .filter(i=>inventions.has(i.name))
+        .map(i=>`<span class="tag">${i.icon} ${i.name}</span>`)
+        .join("")}
+    </div>
+    <p><b>Upcoming:</b></p>
+    <div>
+      ${INVENTIONS
+        .filter(i=>!inventions.has(i.name))
+        .slice(0,8)
+        .map(i=>`<span class="tag">🔒 ${i.name} · ${i.year}</span>`)
+        .join("")}
+    </div>
+    <p><b>Natural world:</b> ${naturalObjects.length} discoveries · ${disasters.length} active events</p>
+    <p><b>Recent events:</b></p>
+    ${events.slice(0,20).map(e=>`<div class="event"><b>${e.year}</b> ${e.text}</div>`).join("")}
+  `;
+}
+
+/* =========================================================
+   INPUT / TOOLS
+   ========================================================= */
+
+let painting=false;
+
+canvas.addEventListener("pointerdown",e=>{
+  painting=true;
+  canvas.setPointerCapture(e.pointerId);
+  performTool(e);
+});
+
+canvas.addEventListener("pointermove",e=>{
+  if(painting)performTool(e);
+});
+
+canvas.addEventListener("pointerup",()=>painting=false);
+canvas.addEventListener("pointercancel",()=>painting=false);
+
+canvas.addEventListener("click",e=>{
+  if(tool==="people")inspectNearest(e);
+  else if(tool==="kingdom")inspectKingdom(e);
+});
+
+function performTool(e){
+  const q=screenCell(e);
+  if(!inside(q.x,q.y))return;
+
+  if(tool==="land")brush(q.x,q.y,1);
+
+  if(tool==="water")brush(q.x,q.y,0);
+
+  if(tool==="tree")addTree(q.x,q.y);
+
+  if(tool==="people"&&isLand(q.x,q.y)&&people.length<320){
+    const p=createPerson(q.x+.5,q.y+.5);
+    addEvent(`${p.name} appeared in the world.`);
+  }
+
+  if(tool==="house")addHouse(q.x,q.y);
+
+  if(tool==="kingdom"&&isLand(q.x,q.y)){
+    const p=nearestAt(q.x,q.y,2);
+    if(p&&!p.kingdom)createKingdom(p);
+  }
+}
+
+function nearestAt(x,y,range){
+  let best=null,d=range;
+  for(const p of people){
+    if(!p.alive)continue;
+    const n=Math.hypot(p.x-x,p.y-y);
+    if(n<d){d=n;best=p}
+  }
+  return best;
+}
+
+function inspectNearest(e){
+  const q=screenCell(e);
+  const p=nearestAt(q.x,q.y,1.5);
+  if(p)showPerson(p);
+}
+
+function inspectKingdom(e){
+  const q=screenCell(e);
+  const p=nearestAt(q.x,q.y,3);
+  if(p&&p.kingdom)showKingdom(p.kingdom);
 }
 
 document.querySelectorAll("[data-tool]").forEach(btn=>{
   btn.addEventListener("click",()=>{
-    selectedTool=btn.dataset.tool;
-    document.querySelectorAll("[data-tool]").forEach(b=>b.classList.remove("active"));
+    tool=btn.dataset.tool;
+    document.querySelectorAll("[data-tool]")
+      .forEach(b=>b.classList.remove("active"));
     btn.classList.add("active");
-    const names={land:"Add Land",erase:"Water",tree:"Trees",people:"People",house:"House"};
-    document.getElementById("hint").textContent=
-      selectedTool==="people"
-      ? "Tap a person to inspect them, or drag to place people."
-      : `${names[selectedTool]} selected. Tap or drag on the world.`;
   });
 });
 
-document.getElementById("pause").addEventListener("click",e=>{
-  paused=!paused;
-  e.target.textContent=paused?"▶ Resume":"⏸ Pause";
-});
-document.getElementById("reset").addEventListener("click",()=>{
-  if(confirm("Start a brand-new water world?"))makeWaterWorld();
-});
+document.getElementById("historyBtn").onclick=showHistory;
 
-function loop(now){
-  const dt=Math.min(.05,(now-last)/1000);
-  last=now;
-  update(dt);
+document.getElementById("pause").onclick=()=>{
+  paused=!paused;
+  document.getElementById("pause").textContent=paused?"▶":"⏸";
+};
+
+document.getElementById("slower").onclick=()=>{
+  speed=Math.max(.25,speed/2);
+  document.getElementById("speed").value=String(speed);
+};
+
+document.getElementById("faster").onclick=()=>{
+  speed=Math.min(25,speed*2);
+  document.getElementById("speed").value=String(speed);
+};
+
+document.getElementById("speed").onchange=e=>{
+  speed=Number(e.target.value);
+};
+
+document.getElementById("newWorld").onclick=()=>{
+  if(confirm("Start a new world?"))newWorld();
+};
+
+/* =========================================================
+   GAME LOOP
+   ========================================================= */
+
+function loop(){
+  simulate();
   draw();
   requestAnimationFrame(loop);
 }
 
 resize();
-requestAnimationFrame(loop);
+loop();
 </script>
 </body>
 </html>
