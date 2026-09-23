@@ -198,38 +198,109 @@ function createPerson(tx, ty, parents=null) {
 function update() {
   if (paused) return;
 
-  for (let s=0; s<speed; s++) {
+  for (let s = 0; s < speed; s++) {
     for (const p of people) {
       if (!p.alive) continue;
 
-      p.age += 1 / (60*60*24*30*12);
+      p.age += 1 / (60 * 60 * 24 * 30 * 12);
 
-      if (Math.random() < .012) p.direction += (Math.random()-.5)*1.5;
+      const has = name => p.traits.some(t => t.name === name);
 
-      let nx = p.x + Math.cos(p.direction)*p.speed;
-      let ny = p.y + Math.sin(p.direction)*p.speed;
+      let turnAmount = 1.5;
 
-      if (!isLand(Math.floor(nx),Math.floor(ny))) {
-        p.direction += Math.PI * (.6 + Math.random()*.5);
+      if (has("Curious")) {
+        turnAmount = 2.5;
+
+        if (Math.random() < 0.025) {
+          p.direction += (Math.random() - 0.5) * turnAmount;
+        }
       } else {
-        p.x = nx; p.y = ny;
+        if (Math.random() < 0.012) {
+          p.direction += (Math.random() - 0.5) * turnAmount;
+        }
+      }
+
+      if (has("Friendly")) {
+        let closest = null;
+        let closestDist = 8;
+
+        for (const other of people) {
+          if (other === p || !other.alive) continue;
+
+          const dx = other.x - p.x;
+          const dy = other.y - p.y;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist < closestDist) {
+            closest = other;
+            closestDist = dist;
+          }
+        }
+
+        if (closest) {
+          const targetDirection = Math.atan2(
+            closest.y - p.y,
+            closest.x - p.x
+          );
+
+          p.direction += Math.atan2(
+            Math.sin(targetDirection - p.direction),
+            Math.cos(targetDirection - p.direction)
+          ) * 0.08;
+        }
+      }
+
+      if (has("Curious") && Math.random() < 0.01) {
+        p.direction += (Math.random() - 0.5) * Math.PI;
+      }
+
+      if (has("Brave") && Math.random() < 0.004) {
+        p.direction += (Math.random() - 0.5) * 0.8;
+      }
+
+      let movementSpeed = p.speed;
+
+      if (has("Hardworking")) {
+        movementSpeed *= 0.95;
+      }
+
+      if (has("Fast")) {
+        movementSpeed *= 1.15;
+      }
+
+      let nx = p.x + Math.cos(p.direction) * movementSpeed;
+      let ny = p.y + Math.sin(p.direction) * movementSpeed;
+
+      if (!isLand(Math.floor(nx), Math.floor(ny))) {
+        p.direction += Math.PI * (0.6 + Math.random() * 0.5);
+      } else {
+        p.x = nx;
+        p.y = ny;
       }
     }
 
-    // Very slow natural population growth.
-    if (people.length < 250 && Math.random() < .0007) {
-      const adults = people.filter(p => p.age >= 18 && p.age < 55);
+    if (people.length < 250 && Math.random() < 0.0007) {
+      const adults = people.filter(
+        p => p.age >= 18 && p.age < 55
+      );
+
       if (adults.length >= 2) {
-        const a = adults[Math.floor(Math.random()*adults.length)];
-        const b = adults[Math.floor(Math.random()*adults.length)];
-        if (a !== b) createPerson(Math.floor(a.x), Math.floor(a.y), [a,b]);
+        const a = adults[Math.floor(Math.random() * adults.length)];
+        const b = adults[Math.floor(Math.random() * adults.length)];
+
+        if (a !== b) {
+          createPerson(
+            Math.floor((a.x + b.x) / 2),
+            Math.floor((a.y + b.y) / 2),
+            [a, b]
+          );
+        }
       }
     }
 
     year += 1 / 12000;
   }
 }
-
 function worldToScreen(x,y) {
   const cell = Math.min(window.innerWidth, window.innerHeight) / terrainSize * 1.7 * camera.zoom;
   const ox = window.innerWidth/2 - terrainSize*cell/2 + camera.x;
