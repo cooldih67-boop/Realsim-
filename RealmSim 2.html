@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RealmSim</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: Arial, sans-serif; background: #111; color: #fff; }
+  #game { display: block; width: 100vw; height: 100vh; background: #111; cursor: crosshair; }
+  #ui { position: fixed; inset: 0; pointer-events: none; }
+  .panel {
+    pointer-events: auto;
+    position: absolute;
+    background: rgba(18, 22, 28, .92);
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.35);
+    backdrop-filter: blur(8px);
+  }
+  #top {
+    top: 12px; left: 12px; right: 12px;
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  #title { font-size: 20px; font-weight: 800; margin-right: auto; }
+  button, select {
+    border: 0; border-radius: 8px; padding: 8px 11px;
+    background: #2b3440; color: white; cursor: pointer;
+    font-weight: 700;
+  }
+  button:hover, select:hover { background: #394554; }
+  #stats { font-size: 13px; opacity: .9; }
+  #person {
+    right: 12px; top: 78px; width: 250px; padding: 15px;
+    display: none;
+  }
+  #person h2 { margin: 0 0 8px; font-size: 19px; }
+  #person p { margin: 6px 0; font-size: 13px; }
+  .trait { display:inline-block; margin:3px 3px 0 0; padding:4px 7px; border-radius:20px; background:#334155; font-size:11px; }
+  #hint {
+    left: 12px; bottom: 12px; padding: 9px 12px; font-size: 12px; opacity: .85;
+  }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="ui">
+  <div id="top" class="panel">
+    <div id="title">🌎 RealmSim</div>
+    <div id="stats">Year 1 • Population: 0</div>
+    <button id="pause">⏸ Pause</button>
+    <button data-speed="1">1×</button>
+    <button data-speed="3">3×</button>
+    <button data-speed="10">10×</button>
+    <button id="newWorld">🌎 New World</button>
+  </div>
+
+  <div id="person" class="panel"></div>
+  <div id="hint" class="panel">Click a person to inspect them • Drag to move around • Wheel to zoom</div>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const statsEl = document.getElementById("stats");
+const personEl = document.getElementById("person");
+const pauseBtn = document.getElementById("pause");
+
+let W = 0, H = 0;
+let paused = false;
+let speed = 1;
+let year = 1;
+let worldSeed = Math.random() * 999999;
+let people = [];
+let terrain = [];
+let terrainSize = 90;
+let camera = { x: 0, y: 0, zoom: 1 };
+let dragging = false;
+let lastMouse = { x: 0, y: 0 };
+
+const firstNames = [
+  "Ari","Milo","Lena","Kai","Nora","Eli","Maya","Theo","Zane","Iris",
+  "Leo","Nova","Evan","Lia","Owen","Mira","Finn","Ada","Jace","Rhea"
+];
+const lastNames = [
+  "Stone","Vale","River","Oak","Pine","Ash","Reed","Fox","Hill","Lake",
+  "Dawn","Wells","Frost","Meadow","North"
+];
+const traits = [
+  ["Brave","More willing to face danger."],
+  ["Intelligent","Learns and solves problems faster."],
+  ["Strong","Better at physical work."],
+  ["Fast","Moves around the world quicker."],
+  ["Hardworking","Collects resources more efficiently."],
+  ["Friendly","More likely to socialize."],
+  ["Curious","Explores more often."],
+  ["Creative","Has a higher chance of becoming a builder."],
+  ["Lucky","Gets slightly better random outcomes."],
+  ["Calm","Less likely to panic during danger."]
+];
+
+function resize() {
+  W = canvas.width = window.innerWidth * devicePixelRatio;
+  H = canvas.height = window.innerHeight * devicePixelRatio;
+  canvas.style.width = window.innerWidth + "px";
+  canvas.style.height = window.innerHeight + "px";
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+function rand(seed) {
+  const x = Math.sin(seed * 12.9898 + worldSeed) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function noise(x, y) {
+  let n = 0, amp = .55, freq = .012;
+  for (let i=0; i<4; i++) {
+    const gx = Math.floor(x*freq), gy = Math.floor(y*freq);
+    const fx = x*freq-gx, fy = y*freq-gy;
+    const a = rand(gx*127.1 + gy*311.7);
+    const b = rand((gx+1)*127.1 + gy*311.7);
+    const c = rand(gx*127.1 + (gy+1)*311.7);
+    const d = rand((gx+1)*127.1 + (gy+1)*311.7);
+    const u = fx*fx*(3-2*fx), v = fy*fy*(3-2*fy);
+    n += (a*(1-u)*(1-v)+b*u*(1-v)+c*(1-u)*v+d*u*v)*amp;
+    amp *= .5; freq *= 2;
+  }
+  return n;
+}
+
+function makeWorld() {
+  year = 1;
+  camera = { x: 0, y: 0, zoom: 1 };
+  terrain = [];
+  people = [];
+  worldSeed = Math.random() * 999999;
+
+  for (let y=0; y<terrainSize; y++) {
+    terrain[y] = [];
+    for (let x=0; x<terrainSize; x++) {
+      const edge = Math.min(x, y, terrainSize-1-x, terrainSize-1-y) / 12;
+      const n = noise(x*10, y*10) + noise(x*4+300, y*4+500)*.35;
+      terrain[y][x] = n + Math.min(edge,1)*.15;
+    }
+  }
+
+  // Spawn an initial population on land.
+  let attempts = 0;
+  while (people.length < 70 && attempts++ < 5000) {
+    const x = Math.floor(Math.random()*terrainSize);
+    const y = Math.floor(Math.random()*terrainSize);
+    if (isLand(x,y)) createPerson(x,y);
+  }
+}
+
+function isLand(x,y) {
+  return terrain[y] && terrain[y][x] > .40;
+}
+
+function createPerson(tx, ty, parents=null) {
+  const parentTraits = parents ? parents.flatMap(p => p.traits.map(t => t.name)) : [];
+  let chosen = [];
+
+  if (parents) {
+    for (const p of parents) {
+      for (const t of p.traits) {
+        if (Math.random() < .42 && !chosen.some(c=>c.name===t.name)) chosen.push(t);
+      }
+    }
+  }
+  while (chosen.length < 1 + Math.floor(Math.random()*3)) {
+    const t = traits[Math.floor(Math.random()*traits.length)];
+    if (!chosen.some(c=>c.name===t[0])) chosen.push({name:t[0], desc:t[1]});
+  }
+
+  const p = {
+    id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2),
+    name: firstNames[Math.floor(Math.random()*firstNames.length)] + " " +
+          lastNames[Math.floor(Math.random()*lastNames.length)],
+    x: tx + .5, y: ty + .5,
+    age: parents ? 0 : 8 + Math.floor(Math.random()*45),
+    traits: chosen,
+    speed: 0.012 + Math.random()*0.012,
+    direction: Math.random()*Math.PI*2,
+    hue: Math.floor(Math.random()*360),
+    alive: true
+  };
+  p.baseSpeed = p.speed;
+  if (p.traits.some(t=>t.name==="Fast")) p.speed *= 1.35;
+  people.push(p);
+  return p;
+}
+
+function update() {
+  if (paused) return;
+
+  for (let s=0; s<speed; s++) {
+    for (const p of people) {
+      if (!p.alive) continue;
+
+      p.age += 1 / (60*60*24*30*12);
+
+      if (Math.random() < .012) p.direction += (Math.random()-.5)*1.5;
+
+      let nx = p.x + Math.cos(p.direction)*p.speed;
+      let ny = p.y + Math.sin(p.direction)*p.speed;
+
+      if (!isLand(Math.floor(nx),Math.floor(ny))) {
+        p.direction += Math.PI * (.6 + Math.random()*.5);
+      } else {
+        p.x = nx; p.y = ny;
+      }
+    }
+
+    // Very slow natural population growth.
+    if (people.length < 250 && Math.random() < .0007) {
+      const adults = people.filter(p => p.age >= 18 && p.age < 55);
+      if (adults.length >= 2) {
+        const a = adults[Math.floor(Math.random()*adults.length)];
+        const b = adults[Math.floor(Math.random()*adults.length)];
+        if (a !== b) createPerson(Math.floor(a.x), Math.floor(a.y), [a,b]);
+      }
+    }
+
+    year += 1 / 12000;
+  }
+}
+
+function worldToScreen(x,y) {
+  const cell = Math.min(window.innerWidth, window.innerHeight) / terrainSize * 1.7 * camera.zoom;
+  const ox = window.innerWidth/2 - terrainSize*cell/2 + camera.x;
+  const oy = window.innerHeight/2 - terrainSize*cell/2 + camera.y;
+  return { x: ox+x*cell, y: oy+y*cell, cell };
+}
+
+function draw() {
+  ctx.clearRect(0,0,window.innerWidth,window.innerHeight);
+
+  const cell = Math.min(window.innerWidth, window.innerHeight) / terrainSize * 1.7 * camera.zoom;
+  const ox = window.innerWidth/2 - terrainSize*cell/2 + camera.x;
+  const oy = window.innerHeight/2 - terrainSize*cell/2 + camera.y;
+
+  ctx.fillStyle = "#152536";
+  ctx.fillRect(0,0,window.innerWidth,window.innerHeight);
+
+  for (let y=0; y<terrainSize; y++) {
+    for (let x=0; x<terrainSize; x++) {
+      const v = terrain[y][x];
+      if (v <= .40) {
+        ctx.fillStyle = v < .24 ? "#102d48" : "#174563";
+      } else if (v > .78) {
+        ctx.fillStyle = "#77756a";
+      } else if (v > .67) {
+        ctx.fillStyle = "#5f7650";
+      } else {
+        ctx.fillStyle = "#3f7048";
+      }
+      ctx.fillRect(ox+x*cell, oy+y*cell, cell+1, cell+1);
+    }
+  }
+
+  for (const p of people) {
+    if (!p.alive) continue;
+    const s = worldToScreen(p.x,p.y);
+    const r = Math.max(2.5, 4*camera.zoom);
+    ctx.beginPath();
+    ctx.arc(s.x,s.y,r,0,Math.PI*2);
+    ctx.fillStyle = `hsl(${p.hue} 75% 65%)`;
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,.45)";
+    ctx.stroke();
+  }
+
+  statsEl.textContent = `Year ${Math.floor(year)} • Population: ${people.length}`;
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function showPerson(p) {
+  personEl.style.display = "block";
+  personEl.innerHTML = `
+    <h2>👤 ${p.name}</h2>
+    <p><b>Age:</b> ${Math.floor(p.age)}</p>
+    <p><b>Position:</b> ${Math.floor(p.x)}, ${Math.floor(p.y)}</p>
+    <p><b>Traits:</b></p>
+    <div>${p.traits.map(t=>`<span class="trait" title="${t.desc}">${t.name}</span>`).join("")}</div>
+  `;
+}
+
+canvas.addEventListener("pointerdown", e => {
+  dragging = true;
+  lastMouse = {x:e.clientX,y:e.clientY};
+});
+
+window.addEventListener("pointerup", () => dragging=false);
+
+canvas.addEventListener("pointermove", e => {
+  if (!dragging) return;
+  camera.x += e.clientX-lastMouse.x;
+  camera.y += e.clientY-lastMouse.y;
+  lastMouse = {x:e.clientX,y:e.clientY};
+});
+
+canvas.addEventListener("click", e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX, my = e.clientY;
+  let closest = null, best = 15;
+  for (const p of people) {
+    const s = worldToScreen(p.x,p.y);
+    const d = Math.hypot(s.x-mx,s.y-my);
+    if (d < best) { best=d; closest=p; }
+  }
+  if (closest) showPerson(closest);
+});
+
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  camera.zoom *= e.deltaY < 0 ? 1.1 : .9;
+  camera.zoom = Math.max(.45,Math.min(3.5,camera.zoom));
+}, {passive:false});
+
+pauseBtn.onclick = () => {
+  paused = !paused;
+  pauseBtn.textContent = paused ? "▶ Resume" : "⏸ Pause";
+};
+
+document.querySelectorAll("[data-speed]").forEach(btn => {
+  btn.onclick = () => speed = Number(btn.dataset.speed);
+});
+
+document.getElementById("newWorld").onclick = () => {
+  personEl.style.display = "none";
+  makeWorld();
+};
+
+makeWorld();
+loop();
+</script>
+</body>
+</html>
