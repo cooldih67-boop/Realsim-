@@ -70,6 +70,7 @@ button.active{background:#72b9ff;color:#06101a}
   position:absolute;left:10px;bottom:10px;z-index:20;
   width:min(290px,calc(100vw - 20px));
   background:#111e;border:1px solid #ffffff2d;border-radius:12px;
+  pointer-events:auto;touch-action:manipulation;
   padding:10px;color:#fff;font:12px system-ui;box-shadow:0 8px 30px #0008;
   backdrop-filter:blur(8px);
 }
@@ -1745,11 +1746,17 @@ function updateMassSelection(){
   const y1=Math.min(massStart.y,massEnd.y);
   const y2=Math.max(massStart.y,massEnd.y);
 
+  const minSize=10;
+  const sx1=x2-x1<minSize?(x1+x2)/2-minSize/2:x1;
+  const sx2=x2-x1<minSize?(x1+x2)/2+minSize/2:x2;
+  const sy1=y2-y1<minSize?(y1+y2)/2-minSize/2:y1;
+  const sy2=y2-y1<minSize?(y1+y2)/2+minSize/2:y2;
+
   massSelected=people.filter(p=>{
     if(!p.alive)return false;
     const px=p.x*CELL+CELL/2;
     const py=p.y*CELL+CELL/2;
-    return px>=x1&&px<=x2&&py>=y1&&py<=y2;
+    return px>=sx1&&px<=sx2&&py>=sy1&&py<=sy2;
   });
 
   const apply=document.getElementById("massTraitApply");
@@ -1767,6 +1774,7 @@ function applyMassTrait(){
   if(!trait||!massSelected.length)return;
 
   for(const p of massSelected){
+    if(!Array.isArray(p.traits))p.traits=[];
     if(trait==="Remove"){
       p.traits=[];
     }else if(!p.traits.includes(trait)){
@@ -1774,7 +1782,7 @@ function applyMassTrait(){
     }
   }
 
-  addEvent(`🧪 Experiment: ${massSelected.length} people were given ${trait==="Remove"?"their traits were cleared":trait}.`);
+  addEvent(`🧪 Experiment: ${massSelected.length} people ${trait==="Remove"?"had their traits cleared":"received the "+trait+" trait"}.`);
   refreshEvents();
 
   massSelected=[];
@@ -1794,7 +1802,7 @@ function enterMassTrait(){
 
   const button=document.getElementById("massTraitToggle");
   const status=document.getElementById("massTraitStatus");
-  if(button)button.textContent="Drag on Map";
+  if(button)button.textContent="🖌️ Drag on Map";
   if(status)status.textContent="Drag a box over people to select them.";
   updateMassSelection();
 }
@@ -1822,6 +1830,7 @@ function exitMassTrait(){
 function massPointerDown(e){
   if(!massTraitMode)return;
   e.preventDefault();
+  e.stopPropagation();
   const p=canvasPoint(e);
   massDragging=true;
   massStart=p;
@@ -1832,6 +1841,7 @@ function massPointerDown(e){
 function massPointerMove(e){
   if(!massTraitMode||!massDragging)return;
   e.preventDefault();
+  e.stopPropagation();
   massEnd=canvasPoint(e);
   updateMassSelection();
 }
@@ -1839,25 +1849,11 @@ function massPointerMove(e){
 function massPointerUp(e){
   if(!massTraitMode||!massDragging)return;
   e.preventDefault();
+  e.stopPropagation();
   massEnd=canvasPoint(e);
   massDragging=false;
   updateMassSelection();
 }
-
-document.addEventListener("DOMContentLoaded",()=>{
-  document.getElementById("massTraitToggle")?.addEventListener("click",()=>{
-    if(massTraitMode)exitMassTrait();
-    else enterMassTrait();
-  });
-  document.getElementById("massTraitApply")?.addEventListener("click",applyMassTrait);
-  document.getElementById("massTraitCancel")?.addEventListener("click",exitMassTrait);
-
-  canvas.addEventListener("pointerdown",massPointerDown,{passive:false});
-  canvas.addEventListener("pointermove",massPointerMove,{passive:false});
-  canvas.addEventListener("pointerup",massPointerUp,{passive:false});
-  canvas.addEventListener("pointercancel",massPointerUp,{passive:false});
-});
-
 function drawMassSelection(){
   if(!massTraitMode||!massStart||!massEnd)return;
 
