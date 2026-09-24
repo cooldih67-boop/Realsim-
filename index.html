@@ -22,7 +22,7 @@ button.active{background:#72b9ff;color:#06101a}
 #right h3{margin:0 0 7px}
 #right p{font-size:12px;margin:7px 0}
 .tag{display:inline-block;background:#344253;border-radius:8px;padding:4px 7px;margin:2px;font-size:11px}
-#events{position:absolute;right:12px;top:112px;left:auto;width:min(285px,calc(100vw - 24px));max-height:135px;overflow:auto;padding:8px;font-size:10px;z-index:6;pointer-events:none}
+#events{display:none;position:absolute;right:12px;top:112px;left:auto;width:min(285px,calc(100vw - 24px));max-height:135px;overflow:auto;padding:8px;font-size:10px;z-index:6;pointer-events:none}
 .event{padding:5px 0;border-bottom:1px solid #ffffff14}
 .event b{color:#8fd0ff}
 #time{position:absolute;right:10px;bottom:10px;padding:7px;display:flex;gap:5px;align-items:center;z-index:12}
@@ -96,13 +96,104 @@ button.active{background:#72b9ff;color:#06101a}
   .massPanel select,.massPanel button{min-height:44px}
 }
 </style>
-</head>
+
+<style id="mapFirstMobileUI">
+@media(max-width:700px){
+  #top{
+    left:6px;right:6px;top:5px;
+    min-height:0;padding:4px 6px;
+    gap:4px;flex-wrap:nowrap;
+    overflow-x:auto;overflow-y:hidden;
+    scrollbar-width:none;
+    background:#101820dd;
+    border-radius:10px;
+    z-index:30;
+  }
+  #top::-webkit-scrollbar{display:none}
+  #logo{font-size:13px;flex:0 0 auto;margin-right:2px}
+  #stats{display:none}
+  #top button,#top select{min-height:32px;padding:5px 7px;font-size:10px}
+  #genderControl{display:inline-flex;flex:0 0 auto;font-size:9px}
+  #genderChoice{padding:5px 6px}
+
+  /* One small horizontal tool strip under the top bar. */
+  #tools{
+    top:48px;left:6px;right:6px;
+    width:auto;height:38px;
+    padding:2px;
+    display:flex;flex-direction:row;
+    gap:3px;overflow-x:auto;overflow-y:hidden;
+    background:#101820aa;border-radius:9px;
+    scrollbar-width:none;
+    z-index:25;
+  }
+  #tools::-webkit-scrollbar{display:none}
+  .tool{width:34px;height:34px;min-width:34px;font-size:15px}
+
+  /* History is a tiny card, not a wall of text. */
+  #events{
+    top:92px;right:6px;left:auto;
+    width:min(180px,calc(100vw - 12px));
+    max-height:62px;
+    padding:5px;
+    font-size:8px;
+    border-radius:8px;
+    overflow:hidden;
+    opacity:.86;
+  }
+  #events .event{padding:2px 0}
+
+  /* Inspector is a compact bottom sheet only when open. */
+  #right{
+    left:6px;right:6px;bottom:54px;top:auto;
+    width:auto;max-height:34vh;
+    padding:8px;
+    border-radius:11px;
+    z-index:60;
+  }
+  #right h3{font-size:13px;margin-bottom:4px}
+  #right p{font-size:10px;margin:4px 0}
+  #right .tag{padding:3px 5px;font-size:9px}
+
+  /* Mass trait is hidden until its mode is active. */
+  #massTraitPanel{display:none;
+    left:6px;right:6px;bottom:54px;
+    width:auto;
+    padding:7px;
+    border-radius:10px;
+    z-index:70;
+  }
+  #massTraitPanel .massTitle{font-size:12px}
+  #massTraitPanel select,#massTraitPanel button{
+    min-height:36px;padding:5px 7px;font-size:10px;
+  }
+  #massTraitPanel #massTraitStatus{margin:4px 0;font-size:9px}
+
+  /* Time controls become a thin bottom dock. */
+  #time{
+    left:6px;right:6px;bottom:6px;
+    padding:3px;
+    height:38px;
+    justify-content:center;
+    border-radius:9px;
+    background:#101820dd;
+    z-index:50;
+  }
+  #time button,#time select{min-height:32px;padding:4px 7px;font-size:10px}
+  #time select{max-width:170px}
+
+  #hint{display:none}
+}
+
+/* Desktop stays unchanged. */
+</style>
+<style>.massSelecting{touch-action:none!important;cursor:crosshair}</style></head>
 <body>
 <canvas id="world"></canvas>
 
 <div id="ui">
   <div id="top" class="panel">
-    <div id="logo">🌎 REALSIM</div><span id="genderControl">
+    <div id="logo">🌎 REALSIM<button id="historyToggle" aria-label="History">📜</button></div><span id="genderControl">
   <label for="genderChoice">Gender</label>
   <select id="genderChoice">
     <option value="random">🎲 Random</option>
@@ -116,7 +207,7 @@ button.active{background:#72b9ff;color:#06101a}
     <button id="faster">⚡</button>
     <button id="newWorld">🌎 New</button>
   </div>
-<div id="massTraitPanel" class="massPanel">
+<div id="massTraitPanel" class="massPanel" style="display:none">
   <div class="massTitle">🧪 Mass Trait</div>
   <div class="massRow">
     <select id="massTraitChoice">
@@ -1719,121 +1810,104 @@ document.getElementById("newWorld").onclick=()=>{
 let frame=0;
 
 /* =========================================================
-   MOBILE MASS TRAIT EXPERIMENT TOOL
+   BUILD-STYLE BOX SELECT + MASS TRAITS
    ========================================================= */
-
-let massTraitMode=false;
-let massSelected=[];
+let massTraitMode=false,massDragging=false,massStart=null,massEnd=null,massSelected=[];
 
 function updateMassSelection(){
-  const apply=document.getElementById("massTraitApply");
-  const status=document.getElementById("massTraitStatus");
-
-  if(apply){
-    apply.disabled=massSelected.length===0;
-    apply.textContent=`Apply to ${massSelected.length} people`;
-  }
-  if(status){
-    status.textContent=massTraitMode
-      ? `${massSelected.length} selected. Tap people to add/remove them.`
-      : "Tap Select People to begin.";
-  }
+  const a=document.getElementById("massTraitApply"),s=document.getElementById("massTraitStatus");
+  if(a){a.disabled=massSelected.length===0;a.textContent=`Apply to ${massSelected.length} people`;}
+  if(s)s.textContent=massTraitMode?(massDragging?`${massSelected.length} people inside selection`:"Drag a box around people."):"Drag a box around people.";
 }
 
-function togglePersonForMassTrait(ev){
-  if(!massTraitMode)return false;
+function selectionPoint(e){
+  const r=canvas.getBoundingClientRect();
+  return {x:(e.clientX-r.left)*(W/r.width),y:(e.clientY-r.top)*(H/r.height)};
+}
 
-  const q=canvasPoint(ev);
-  const p=nearestAt(q.x,q.y,3.2);
-
-  if(!p){
-    const status=document.getElementById("massTraitStatus");
-    if(status)status.textContent="No person there. Tap directly on a person.";
-    return true;
-  }
-
-  const i=massSelected.indexOf(p);
-  if(i>=0)massSelected.splice(i,1);
-  else massSelected.push(p);
-
+function updateBoxSelection(){
+  if(!massStart||!massEnd)return;
+  const x1=Math.min(massStart.x,massEnd.x),x2=Math.max(massStart.x,massEnd.x);
+  const y1=Math.min(massStart.y,massEnd.y),y2=Math.max(massStart.y,massEnd.y);
+  massSelected=people.filter(p=>{
+    if(!p.alive)return false;
+    const x=p.x*CELL+CELL/2,y=p.y*CELL+CELL/2;
+    return x>=x1&&x<=x2&&y>=y1&&y<=y2;
+  });
   updateMassSelection();
-  return true;
+}
+
+function massPointerDown(e){
+  if(!massTraitMode)return;
+  e.preventDefault();e.stopPropagation();
+  try{canvas.setPointerCapture(e.pointerId)}catch(_){}
+  massDragging=true;massStart=selectionPoint(e);massEnd=massStart;massSelected=[];
+  updateBoxSelection();
+}
+function massPointerMove(e){
+  if(!massTraitMode||!massDragging)return;
+  e.preventDefault();e.stopPropagation();
+  massEnd=selectionPoint(e);updateBoxSelection();
+}
+function massPointerUp(e){
+  if(!massTraitMode||!massDragging)return;
+  e.preventDefault();e.stopPropagation();
+  massEnd=selectionPoint(e);massDragging=false;updateBoxSelection();
+  try{canvas.releasePointerCapture(e.pointerId)}catch(_){}
+  if(!massSelected.length){
+    const s=document.getElementById("massTraitStatus");
+    if(s)s.textContent="No people selected. Drag a larger box.";
+  }
 }
 
 function applyMassTrait(){
   const trait=document.getElementById("massTraitChoice")?.value;
   if(!trait||!massSelected.length)return;
-
   for(const p of massSelected){
     if(!Array.isArray(p.traits))p.traits=[];
-    if(trait==="Remove"){
-      p.traits=[];
-    }else if(!p.traits.includes(trait)){
-      p.traits.push(trait);
-    }
+    if(trait==="Remove")p.traits=[];
+    else if(!p.traits.includes(trait))p.traits.push(trait);
   }
-
   addEvent(`🧪 Experiment: ${massSelected.length} people ${trait==="Remove"?"had their traits cleared":"received the "+trait+" trait"}.`);
-  refreshEvents();
-
-  exitMassTrait();
+  refreshEvents();exitMassTrait();
 }
 
 function enterMassTrait(){
-  massTraitMode=true;
-  massSelected=[];
+  massTraitMode=true;massDragging=false;massStart=null;massEnd=null;massSelected=[];
   canvas.classList.add("massSelecting");
-
-  const button=document.getElementById("massTraitToggle");
-  if(button)button.textContent="✓ Selecting";
-
-  updateMassSelection();
+  const p=document.getElementById("massTraitPanel"),b=document.getElementById("massTraitToggle");
+  if(p)p.style.display="block";if(b)b.textContent="✓ Select Mode";updateMassSelection();
 }
-
 function exitMassTrait(){
-  massTraitMode=false;
-  massSelected=[];
+  massTraitMode=false;massDragging=false;massStart=null;massEnd=null;massSelected=[];
   canvas.classList.remove("massSelecting");
-
-  const button=document.getElementById("massTraitToggle");
-  if(button)button.textContent="Select People";
-
-  updateMassSelection();
+  const p=document.getElementById("massTraitPanel"),b=document.getElementById("massTraitToggle");
+  if(p)p.style.display="none";if(b)b.textContent="Select People";updateMassSelection();
 }
 
 document.addEventListener("DOMContentLoaded",()=>{
-  document.getElementById("massTraitToggle")?.addEventListener("click",()=>{
-    if(massTraitMode)exitMassTrait();
-    else enterMassTrait();
-  });
-
+  document.getElementById("massTraitToggle")?.addEventListener("click",()=>massTraitMode?exitMassTrait():enterMassTrait());
   document.getElementById("massTraitApply")?.addEventListener("click",applyMassTrait);
   document.getElementById("massTraitCancel")?.addEventListener("click",exitMassTrait);
-
-  // Use click, which iOS handles reliably. No pointer-drag gestures needed.
-  canvas.addEventListener("click",e=>{
-    if(!massTraitMode)return;
-    e.preventDefault();
-    e.stopPropagation();
-    togglePersonForMassTrait(e);
-  },true);
+  canvas.addEventListener("pointerdown",massPointerDown,{passive:false,capture:true});
+  canvas.addEventListener("pointermove",massPointerMove,{passive:false,capture:true});
+  canvas.addEventListener("pointerup",massPointerUp,{passive:false,capture:true});
+  canvas.addEventListener("pointercancel",massPointerUp,{passive:false,capture:true});
 });
 
 function drawMassSelection(){
   if(!massTraitMode)return;
-
+  if(massStart&&massEnd){
+    const x=Math.min(massStart.x,massEnd.x),y=Math.min(massStart.y,massEnd.y);
+    const w=Math.abs(massEnd.x-massStart.x),h=Math.abs(massEnd.y-massStart.y);
+    ctx.save();ctx.fillStyle="#66aaff22";ctx.strokeStyle="#9bd0ff";ctx.lineWidth=2;
+    ctx.setLineDash([7,5]);ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h);ctx.restore();
+  }
   for(const p of massSelected){
     if(!p.alive)continue;
-    const x=p.x*CELL+CELL/2;
-    const y=p.y*CELL+CELL/2;
-
-    ctx.save();
-    ctx.strokeStyle="#8bc7ff";
-    ctx.lineWidth=2.5;
-    ctx.beginPath();
-    ctx.arc(x,y,Math.max(7,CELL*.7),0,Math.PI*2);
-    ctx.stroke();
-    ctx.restore();
+    const x=p.x*CELL+CELL/2,y=p.y*CELL+CELL/2;
+    ctx.save();ctx.strokeStyle="#fff";ctx.lineWidth=2.5;ctx.beginPath();
+    ctx.arc(x,y,Math.max(7,CELL*.75),0,Math.PI*2);ctx.stroke();ctx.restore();
   }
 }
 
@@ -1850,3 +1924,20 @@ loop();
 </script>
 </body>
 </html>
+
+<style>
+@media(max-width:700px){
+  #events.historyOpen{display:block;max-height:150px}
+  #historyToggle{display:inline-block}
+}
+@media(min-width:701px){#historyToggle{display:none}}
+</style>
+<script>
+document.addEventListener("DOMContentLoaded",()=>{
+  const h=document.getElementById("historyToggle");
+  const e=document.getElementById("events");
+  h?.addEventListener("click",()=>{
+    e?.classList.toggle("historyOpen");
+  });
+});
+</script>
