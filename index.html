@@ -22,13 +22,13 @@ button.active{background:#72b9ff;color:#06101a}
 #right h3{margin:0 0 7px}
 #right p{font-size:12px;margin:7px 0}
 .tag{display:inline-block;background:#344253;border-radius:8px;padding:4px 7px;margin:2px;font-size:11px}
-#events{position:absolute;left:72px;bottom:12px;width:min(360px,calc(100vw - 84px));max-height:190px;overflow:auto;padding:9px;font-size:11px}
+#events{position:absolute;left:72px;top:120px;width:min(300px,calc(100vw - 84px));max-height:150px;overflow:auto;padding:9px;font-size:10px;z-index:4}
 .event{padding:5px 0;border-bottom:1px solid #ffffff14}
 .event b{color:#8fd0ff}
 #time{position:absolute;right:10px;bottom:12px;padding:7px;display:flex;gap:5px;align-items:center}
 #hint{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);padding:7px 10px;font-size:11px}
 .hidden{display:none!important}
-@media(max-width:700px){#events{bottom:68px;left:10px;width:calc(100vw - 20px);max-height:130px}#hint{display:none}#right{top:120px}}
+@media(max-width:700px){#events{top:112px;left:10px;width:min(250px,calc(100vw - 20px));max-height:115px}#hint{display:none}#right{top:120px}}
 </style>
 </head>
 <body>
@@ -98,6 +98,7 @@ let events=[];
 let inventions=new Set();
 let disasters=[];
 let naturalObjects=[];
+let tribes=[];
 
 let simYear=1;
 let speed=1;
@@ -209,7 +210,7 @@ addEventListener("resize",resize);
 function newWorld(){
   terrain=Array.from({length:ROWS},()=>Array(COLS).fill(0));
   trees=[];houses=[];people=[];kingdoms=[];armies=[];
-  events=[];inventions=new Set();disasters=[];naturalObjects=[];simYear=1;
+  events=[];inventions=new Set();disasters=[];naturalObjects=[];tribes=[];simYear=1;
   selectedPerson=null;selectedKingdom=null;
   addEvent("The world begins as a vast ocean. No civilization exists yet.");
   refreshEvents();
@@ -546,6 +547,59 @@ function spawnNaturalPeople(){
 }
 
 
+
+/* =========================================================
+   TRIBES
+   ========================================================= */
+
+const TRIBE_NAMES=[
+  "River Tribe","Stone Tribe","Oak Tribe","Sun Tribe","Wolf Tribe",
+  "Cedar Tribe","Mountain Tribe","Red Valley Tribe","Dawn Tribe",
+  "Flint Tribe","Pine Tribe","Moon Tribe"
+];
+
+function createTribe(){
+  if(simYear<100)return;
+  if(tribes.length>=18)return;
+  if(Math.random()>.0012)return;
+
+  const candidates=people.filter(p=>p.alive&&!p.tribe);
+  if(candidates.length<4)return;
+
+  const seed=candidates[Math.floor(Math.random()*candidates.length)];
+  const nearby=candidates.filter(p=>
+    Math.hypot(p.x-seed.x,p.y-seed.y)<5
+  ).slice(0,12);
+
+  if(nearby.length<4)return;
+
+  const tribe={
+    id:tribes.length+1,
+    name:TRIBE_NAMES[Math.floor(Math.random()*TRIBE_NAMES.length)]+" "+(tribes.length+1),
+    members:[],
+    founder:seed,
+    color:`hsl(${Math.floor(Math.random()*360)} 55% 48%)`,
+    year:Math.floor(simYear)
+  };
+
+  for(const p of nearby){
+    p.tribe=tribe;
+    tribe.members.push(p);
+  }
+
+  tribes.push(tribe);
+  addEvent(`🏕️ TRIBE FORMED: The ${tribe.name} formed around ${seed.name}.`);
+  showToast(`🏕️ TRIBE FORMED: ${tribe.name}`);
+  refreshEvents();
+}
+
+function updateTribes(){
+  for(const t of tribes){
+    t.members=t.members.filter(p=>p.alive&&p.tribe===t);
+  }
+}
+
+
 /* =========================================================
    CIVILIZATION PROGRESSION
    ========================================================= */
@@ -571,6 +625,14 @@ function checkInventions(){
     if(Math.floor(simYear)===Number(y))
       addEvent(`🌎 ${milestones[y]}`);
   }
+}
+
+let toastText="";
+let toastUntil=0;
+
+function showToast(message){
+  toastText=message;
+  toastUntil=performance.now()+5000;
 }
 
 let lastMilestone=-1;
@@ -763,6 +825,8 @@ function simulate(){
     updatePeople();
     naturalGrowth();
     naturalBuildings();
+    createTribe();
+    updateTribes();
     formKingdoms();
     organizeArmies();
     updateWars();
@@ -845,9 +909,11 @@ function draw(){
   drawTrees();
   drawNaturalObjects();
   drawHouses();
+  drawTribes();
   drawDisasters();
   drawArmies();
   drawPeople();
+  drawToast();
 }
 
 function drawTerrain(){
@@ -974,6 +1040,40 @@ function drawDisasters(){
     ctx.restore();
   }
 }
+
+
+function drawTribes(){
+  for(const t of tribes){
+    const alive=t.members.filter(p=>p.alive);
+    if(!alive.length)continue;
+
+    let sx=0,sy=0;
+    for(const p of alive){sx+=p.x;sy+=p.y}
+    sx/=alive.length; sy/=alive.length;
+
+    const x=sx*CELL;
+    const y=sy*CELL;
+
+    ctx.save();
+    ctx.globalAlpha=.85;
+    ctx.strokeStyle=t.color;
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.arc(x,y,Math.max(8,CELL*1.6),0,Math.PI*2);
+    ctx.stroke();
+
+    ctx.fillStyle="#111c";
+    ctx.fillRect(x-48,y-CELL*2.5,96,16);
+
+    ctx.fillStyle="#fff";
+    ctx.font="bold 9px system-ui";
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    ctx.fillText("🏕️ "+t.name,x,y-CELL*2.0);
+    ctx.restore();
+  }
+}
+
 
 function drawArmies(){
   for(const army of armies){
@@ -1116,13 +1216,38 @@ function drawPerson(p){
   }
 }
 
+
+function drawToast(){
+  if(performance.now()>toastUntil)return;
+  const w=Math.min(360,W-30);
+  const x=(W-w)/2;
+  const y=78;
+
+  ctx.save();
+  ctx.fillStyle="#111c";
+  ctx.strokeStyle="#ffffff55";
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.roundRect(x,y,w,42,10);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle="#fff";
+  ctx.font="bold 14px system-ui";
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+  ctx.fillText(toastText,W/2,y+21);
+  ctx.restore();
+}
+
+
 function updateStats(){
   const alive=people.filter(p=>p.alive).length;
   const wars=kingdoms.filter(k=>k.atWarWith.size>0).length/2;
 
   document.getElementById("stats").textContent=
     `${era().name} · Year ${Math.floor(simYear)} · `+
-    `👤 ${alive} · 👑 ${kingdoms.length} · `+
+    `👤 ${alive} · 🏕️ ${tribes.length} · 👑 ${kingdoms.length} · `+
     `⚔️ ${Math.floor(wars)} · 🏠 ${houses.length}`;
 }
 
@@ -1142,6 +1267,7 @@ function showPerson(p){
     <h3>👤 ${p.name}</h3>
     <p><b>Role:</b> ${role}</p>
     <p><b>Age:</b> ${Math.floor(p.age)}</p>
+    <p><b>Tribe:</b> ${p.tribe?p.tribe.name:"Independent"}</p>
     <p><b>Kingdom:</b> ${p.kingdom?p.kingdom.name:"Independent"}</p>
     <p><b>Traits:</b></p>
     <div>
@@ -1228,6 +1354,7 @@ function showHistory(){
         .map(i=>`<span class="tag">🔒 ${i.name} · ${i.year}</span>`)
         .join("")}
     </div>
+    <p><b>Tribes:</b> ${tribes.length}</p>
     <p><b>Natural world:</b> ${naturalObjects.length} discoveries · ${disasters.length} active events</p>
     <p><b>Recent events:</b></p>
     ${events.slice(0,20).map(e=>`<div class="event"><b>${e.year}</b> ${e.text}</div>`).join("")}
