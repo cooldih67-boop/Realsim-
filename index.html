@@ -290,7 +290,7 @@ function createPerson(x,y,parents=[]){
     id:Math.random().toString(36).slice(2),
     name:randomName(),
     x,y,
-    age:parents.length?0:8+Math.random()*35,
+    age:parents.length?0:18+Math.random()*22,
     dir:Math.random()*Math.PI*2,
     speed:.11+Math.random()*.07,
     traits:parents.length?inheritedTraits(parents[0],parents[1]):randomTraits(),
@@ -537,14 +537,6 @@ function updateDisasters(){
   }
 }
 
-function spawnNaturalPeople(){
-  if(Math.random()>.0005||people.length>=320)return;
-  const spot=randomLandCell();
-  if(!spot)return;
-  const p=createPerson(spot.x+.5,spot.y+.5);
-  p.age=1+Math.random()*15;
-  addEvent(`🧍 ${p.name} naturally joined the world.`);
-}
 
 
 
@@ -578,7 +570,8 @@ function createTribe(){
     name:TRIBE_NAMES[Math.floor(Math.random()*TRIBE_NAMES.length)]+" "+(tribes.length+1),
     members:[],
     founder:seed,
-    color:`hsl(${Math.floor(Math.random()*360)} 55% 48%)`,
+    color:`hsl(${Math.floor(Math.random()*360)} 65% 50%)`,
+    territory:new Set(),
     year:Math.floor(simYear)
   };
 
@@ -596,6 +589,21 @@ function createTribe(){
 function updateTribes(){
   for(const t of tribes){
     t.members=t.members.filter(p=>p.alive&&p.tribe===t);
+  }
+}
+
+function updateTribeTerritories(){
+  for(const t of tribes)t.territory.clear();
+  for(const t of tribes){
+    const members=t.members.filter(p=>p.alive);
+    for(const p of members){
+      const cx=Math.floor(p.x),cy=Math.floor(p.y);
+      for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
+        if(Math.abs(dx)+Math.abs(dy)>3)continue;
+        const x=cx+dx,y=cy+dy;
+        if(isLand(x,y))t.territory.add(`${x},${y}`);
+      }
+    }
   }
 }
 
@@ -663,22 +671,37 @@ function nearestPerson(p,range){
 
 function naturalGrowth(){
   if(people.length>=320)return;
-  if(Math.random()>.0012)return;
-
-  const adults=people.filter(p=>p.alive&&p.age>=18&&p.age<50);
+  const adults=people.filter(p=>p.alive&&p.age>=18&&p.age<42);
   if(adults.length<2)return;
 
-  const a=adults[Math.floor(Math.random()*adults.length)];
-  const b=adults[Math.floor(Math.random()*adults.length)];
-  if(a===b)return;
+  for(const a of adults){
+    if(a.partner&&!a.partner.alive){a.partner=null;a.bond=0;}
+    let b=a.partner;
+    if(!b){
+      b=adults.find(q=>q!==a&&!q.partner&&Math.hypot(q.x-a.x,q.y-a.y)<1.8);
+      if(b){a.partner=b;b.partner=a;a.bond=0;b.bond=0;}
+    }
+    if(!b)continue;
 
-  const baby=createPerson(
-    Math.floor((a.x+b.x)/2),
-    Math.floor((a.y+b.y)/2),
-    [a,b]
-  );
-
-  if(a.kingdom&&b.kingdom===a.kingdom)baby.kingdom=a.kingdom;
+    const d=Math.hypot(b.x-a.x,b.y-a.y);
+    if(d<2){
+      a.bond=(a.bond||0)+1;b.bond=(b.bond||0)+1;
+      if(a.bond>=120+Math.floor(Math.random()*180)){
+        const baby=createPerson(Math.floor((a.x+b.x)/2)+.5,Math.floor((a.y+b.y)/2)+.5,[a,b]);
+        baby.age=0;
+        baby.partner=null;
+        baby.bond=0;
+        baby.kingdom=a.kingdom&&a.kingdom===b.kingdom?a.kingdom:null;
+        baby.tribe=a.tribe&&a.tribe===b.tribe?a.tribe:null;
+        a.bond=0;b.bond=0;
+        addEvent(`👶 ${baby.name} was born to ${a.name} and ${b.name}.`);
+        refreshEvents();
+      }
+    }else{
+      a.bond=Math.max(0,(a.bond||0)-1);
+      b.bond=Math.max(0,(b.bond||0)-1);
+    }
+  }
 }
 
 function naturalBuildings(){
@@ -827,11 +850,11 @@ function simulate(){
     naturalBuildings();
     createTribe();
     updateTribes();
+    updateTribeTerritories();
     formKingdoms();
     organizeArmies();
     updateWars();
     spawnNaturalThing();
-    spawnNaturalPeople();
     triggerDisaster();
     updateDisasters();
     checkInventions();
@@ -845,7 +868,7 @@ function updatePeople(){
 
     p.age+=1/12;
 
-    if(p.age>88&&Math.random()<.0008){
+    if(p.age>68&&Math.random()<.035){
       p.alive=false;
       if(p.kingdom) p.kingdom.power=Math.max(.1,p.kingdom.power-.1);
       addEvent(`${p.name} died at age ${Math.floor(p.age)}.`);
@@ -909,6 +932,7 @@ function draw(){
   drawTrees();
   drawNaturalObjects();
   drawHouses();
+  drawTribeTerritories();
   drawTribes();
   drawDisasters();
   drawArmies();
@@ -1041,6 +1065,20 @@ function drawDisasters(){
   }
 }
 
+
+
+function drawTribeTerritories(){
+  for(const t of tribes){
+    ctx.save();
+    ctx.globalAlpha=.22;
+    ctx.fillStyle=t.color;
+    for(const key of t.territory){
+      const [x,y]=key.split(",").map(Number);
+      ctx.fillRect(x*CELL,y*CELL,CELL+1,CELL+1);
+    }
+    ctx.restore();
+  }
+}
 
 function drawTribes(){
   for(const t of tribes){
@@ -1267,6 +1305,7 @@ function showPerson(p){
     <h3>👤 ${p.name}</h3>
     <p><b>Role:</b> ${role}</p>
     <p><b>Age:</b> ${Math.floor(p.age)}</p>
+    <p><b>Partner:</b> ${p.partner?p.partner.name:"None"}</p>
     <p><b>Tribe:</b> ${p.tribe?p.tribe.name:"Independent"}</p>
     <p><b>Kingdom:</b> ${p.kingdom?p.kingdom.name:"Independent"}</p>
     <p><b>Traits:</b></p>
@@ -1355,6 +1394,7 @@ function showHistory(){
         .join("")}
     </div>
     <p><b>Tribes:</b> ${tribes.length}</p>
+    <p style="font-size:11px;opacity:.75">Births happen only when two living adults pair and stay together. No random people spawn.</p>
     <p><b>Natural world:</b> ${naturalObjects.length} discoveries · ${disasters.length} active events</p>
     <p><b>Recent events:</b></p>
     ${events.slice(0,20).map(e=>`<div class="event"><b>${e.year}</b> ${e.text}</div>`).join("")}
