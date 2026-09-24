@@ -22,13 +22,51 @@ button.active{background:#72b9ff;color:#06101a}
 #right h3{margin:0 0 7px}
 #right p{font-size:12px;margin:7px 0}
 .tag{display:inline-block;background:#344253;border-radius:8px;padding:4px 7px;margin:2px;font-size:11px}
-#events{position:absolute;left:72px;top:120px;width:min(300px,calc(100vw - 84px));max-height:150px;overflow:auto;padding:9px;font-size:10px;z-index:4}
+#events{position:absolute;right:12px;top:112px;left:auto;width:min(285px,calc(100vw - 24px));max-height:135px;overflow:auto;padding:8px;font-size:10px;z-index:6;pointer-events:auto}
 .event{padding:5px 0;border-bottom:1px solid #ffffff14}
 .event b{color:#8fd0ff}
 #time{position:absolute;right:10px;bottom:12px;padding:7px;display:flex;gap:5px;align-items:center}
 #hint{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);padding:7px 10px;font-size:11px}
 .hidden{display:none!important}
-@media(max-width:700px){#events{top:112px;left:10px;width:min(250px,calc(100vw - 20px));max-height:115px}#hint{display:none}#right{top:120px}}
+@media(max-width:700px){#events{top:108px;right:10px;left:auto;width:min(230px,calc(100vw - 20px));max-height:105px}#hint{display:none}#right{top:120px}}
+</style>
+
+<style>
+#genderControl{position:absolute;left:12px;top:118px;z-index:12;background:#111d;padding:7px 9px;border:1px solid #ffffff22;border-radius:8px;color:#fff;font:12px system-ui}
+#genderControl label{display:block;margin-bottom:3px;opacity:.8}
+#genderChoice{background:#222;color:#fff;border:1px solid #ffffff33;border-radius:5px;padding:3px 6px}
+@media(max-width:700px){#genderControl{left:10px;top:108px}}
+</style>
+
+<style>
+.massPanel{
+  position:absolute;left:10px;bottom:10px;z-index:20;
+  width:min(290px,calc(100vw - 20px));
+  background:#111e;border:1px solid #ffffff2d;border-radius:12px;
+  padding:10px;color:#fff;font:12px system-ui;box-shadow:0 8px 30px #0008;
+  backdrop-filter:blur(8px);
+}
+.massTitle{font-weight:800;font-size:14px;margin-bottom:7px}
+.massRow{display:flex;gap:6px}
+.massPanel select,.massPanel button{
+  min-height:40px;border-radius:8px;border:1px solid #ffffff25;
+  background:#222;color:#fff;padding:7px 9px;font-size:12px;
+  touch-action:manipulation;
+}
+.massPanel select{flex:1;min-width:0}
+.massPanel button{font-weight:700}
+#massTraitToggle{white-space:nowrap}
+#massTraitStatus{opacity:.75;margin:7px 0;line-height:1.25}
+#massTraitApply{width:100%;background:#315c35}
+#massTraitCancel{width:100%;margin-top:5px;background:#3a3030}
+.massSelecting{cursor:crosshair}
+@media(max-width:700px){
+  .massPanel{
+    left:8px;right:8px;bottom:8px;width:auto;
+    padding:9px;
+  }
+  .massPanel select,.massPanel button{min-height:44px}
+}
 </style>
 </head>
 <body>
@@ -44,7 +82,35 @@ button.active{background:#72b9ff;color:#06101a}
     <button id="newWorld">🌎 New</button>
   </div>
 
-  <div id="tools" class="panel">
+  
+<div id="genderControl" class="controlBox">
+  <label>Gender</label>
+  <select id="genderChoice">
+    <option value="random">Random</option>
+    <option value="male">Male</option>
+    <option value="female">Female</option>
+  </select>
+</div>
+<div id="massTraitPanel" class="massPanel">
+  <div class="massTitle">🧪 Mass Trait</div>
+  <div class="massRow">
+    <select id="massTraitChoice">
+      <option value="Smart">🧠 Smart</option>
+      <option value="Strong">💪 Strong</option>
+      <option value="Brave">🦁 Brave</option>
+      <option value="Curious">🔎 Curious</option>
+      <option value="Healthy">❤️ Healthy</option>
+      <option value="Warrior">⚔️ Warrior</option>
+      <option value="Remove">🧹 Remove trait</option>
+    </select>
+    <button id="massTraitToggle">Select Area</button>
+  </div>
+  <div id="massTraitStatus">Tap Select Area, then drag on the map.</div>
+  <button id="massTraitApply" disabled>Apply to 0 people</button>
+  <button id="massTraitCancel">Cancel</button>
+</div>
+
+<div id="tools" class="panel">
     <button class="tool active" data-tool="land" title="Add land">🏝️</button>
     <button class="tool" data-tool="water" title="Add water">🌊</button>
     <button class="tool" data-tool="tree" title="Trees">🌳</button>
@@ -99,6 +165,7 @@ let inventions=new Set();
 let disasters=[];
 let naturalObjects=[];
 let tribes=[];
+let resources=[];
 
 let simYear=1;
 let speed=1;
@@ -210,7 +277,7 @@ addEventListener("resize",resize);
 function newWorld(){
   terrain=Array.from({length:ROWS},()=>Array(COLS).fill(0));
   trees=[];houses=[];people=[];kingdoms=[];armies=[];
-  events=[];inventions=new Set();disasters=[];naturalObjects=[];tribes=[];simYear=1;
+  events=[];inventions=new Set();disasters=[];naturalObjects=[];tribes=[];resources=[];simYear=1;
   selectedPerson=null;selectedKingdom=null;
   addEvent("The world begins as a vast ocean. No civilization exists yet.");
   refreshEvents();
@@ -285,7 +352,7 @@ function roleFor(p){
   return "Civilian";
 }
 
-function createPerson(x,y,parents=[]){
+function createPerson(x,y,parents=[],forcedGender=null){
   const p={
     id:Math.random().toString(36).slice(2),
     name:randomName(),
@@ -359,7 +426,9 @@ function inventionChance(inv){
   const alive=people.filter(p=>p.alive).length;
   const civilized=Math.min(2.5,1+alive/60);
   const kingdomsBonus=kingdoms.length?1.35:1;
-  return inv.base*civilized*kingdomsBonus;
+  const discoveredValue=resources.filter(r=>r.discovered).reduce((s,r)=>s+r.value,0);
+  const resourceBonus=1+Math.min(2.5,discoveredValue/60);
+  return inv.base*civilized*kingdomsBonus*resourceBonus;
 }
 
 function tryNaturalInventions(){
@@ -540,6 +609,96 @@ function updateDisasters(){
 
 
 
+
+/* =========================================================
+   RESOURCES
+   ========================================================= */
+
+const RESOURCE_TYPES=[
+  {name:"Gold",icon:"🪙",rarity:.0010,color:"#d9b83f",era:2500,value:9},
+  {name:"Silver",icon:"🥈",rarity:.0015,color:"#bfc7d0",era:2200,value:7},
+  {name:"Copper",icon:"🟠",rarity:.0024,color:"#b87333",era:1200,value:4},
+  {name:"Iron Ore",icon:"⛓️",rarity:.0020,color:"#59636b",era:2400,value:8},
+  {name:"Coal",icon:"⚫",rarity:.0022,color:"#30343b",era:7000,value:10},
+  {name:"Stone",icon:"🪨",rarity:.0080,color:"#77736d",era:0,value:2},
+  {name:"Clay",icon:"🟤",rarity:.0050,color:"#a76f4b",era:500,value:3},
+  {name:"Salt",icon:"🧂",rarity:.0030,color:"#e6e2d8",era:1200,value:4},
+  {name:"Wheat",icon:"🌾",rarity:.0060,color:"#c8a64b",era:700,value:3},
+  {name:"Gems",icon:"💎",rarity:.0005,color:"#68c5d8",era:5000,value:14},
+  {name:"Oil",icon:"🛢️",rarity:.0006,color:"#171717",era:10500,value:18},
+  {name:"Uranium",icon:"☢️",rarity:.00015,color:"#78bd4b",era:15500,value:30}
+];
+
+function resourceKey(x,y){return `${x},${y}`;}
+
+function spawnResources(){
+  if(Math.random()>.12)return;
+
+  const spot=randomLandCell();
+  if(!spot)return;
+
+  const available=RESOURCE_TYPES.filter(r=>simYear>=r.era);
+  if(!available.length)return;
+
+  let total=available.reduce((s,r)=>s+r.rarity,0);
+  let roll=Math.random()*total;
+  let chosen=available[0];
+
+  for(const r of available){
+    roll-=r.rarity;
+    if(roll<=0){chosen=r;break;}
+  }
+
+  if(resources.some(r=>r.x===spot.x&&r.y===spot.y))return;
+
+  resources.push({
+    ...chosen,
+    x:spot.x,
+    y:spot.y,
+    discovered:false
+  });
+
+  if(resources.length>350)resources.shift();
+}
+
+function drawResources(){
+  for(const r of resources){
+    const x=r.x*CELL+CELL/2;
+    const y=r.y*CELL+CELL/2;
+
+    ctx.save();
+    ctx.globalAlpha=.9;
+    ctx.font=`${Math.max(9,CELL*.72)}px serif`;
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    ctx.fillText(r.discovered ? r.icon : "•",x,y);
+    ctx.restore();
+  }
+}
+
+function resourceNear(x,y,radius=3){
+  return resources.find(r=>Math.hypot(r.x-x,r.y-y)<=radius);
+}
+
+function discoverResources(){
+  if(!people.some(p=>p.alive))return;
+
+  for(const r of resources){
+    if(r.discovered)continue;
+
+    const explorer=people.find(p=>
+      p.alive &&
+      Math.hypot(p.x-r.x,p.y-r.y)<3.5 &&
+      simYear>=r.era
+    );
+
+    if(explorer){
+      r.discovered=true;
+      addEvent(`⛏️ ${explorer.name}'s people discovered ${r.name}.`);
+    }
+  }
+}
+
 /* =========================================================
    TRIBES
    ========================================================= */
@@ -672,13 +831,17 @@ function nearestPerson(p,range){
 function naturalGrowth(){
   if(people.length>=320)return;
   const adults=people.filter(p=>p.alive&&p.age>=18&&p.age<42);
+  const males=adults.filter(p=>p.gender==="male");
+  const females=adults.filter(p=>p.gender==="female");
   if(adults.length<2)return;
 
   for(const a of adults){
     if(a.partner&&!a.partner.alive){a.partner=null;a.bond=0;}
     let b=a.partner;
     if(!b){
-      b=adults.find(q=>q!==a&&!q.partner&&Math.hypot(q.x-a.x,q.y-a.y)<1.8);
+      b=(a.gender==="male"?females:males).find(q=>
+        q!==a&&!q.partner&&Math.hypot(q.x-a.x,q.y-a.y)<1.8
+      );
       if(b){a.partner=b;b.partner=a;a.bond=0;b.bond=0;}
     }
     if(!b)continue;
@@ -694,8 +857,7 @@ function naturalGrowth(){
         baby.kingdom=a.kingdom&&a.kingdom===b.kingdom?a.kingdom:null;
         baby.tribe=a.tribe&&a.tribe===b.tribe?a.tribe:null;
         a.bond=0;b.bond=0;
-        addEvent(`👶 ${baby.name} was born to ${a.name} and ${b.name}.`);
-        refreshEvents();
+        // Births are not history events. The history panel is reserved for major events.
       }
     }else{
       a.bond=Math.max(0,(a.bond||0)-1);
@@ -931,12 +1093,14 @@ function draw(){
   drawKingdomTerritories();
   drawTrees();
   drawNaturalObjects();
+  drawResources();
   drawHouses();
   drawTribeTerritories();
   drawTribes();
   drawDisasters();
   drawArmies();
   drawPeople();
+  drawMassSelection();
   drawToast();
 }
 
@@ -1285,7 +1449,7 @@ function updateStats(){
 
   document.getElementById("stats").textContent=
     `${era().name} · Year ${Math.floor(simYear)} · `+
-    `👤 ${alive} · 🏕️ ${tribes.length} · 👑 ${kingdoms.length} · `+
+    `👤 ${alive} · 🏕️ ${tribes.length} · 👑 ${kingdoms.length} · ⛏️ ${resources.length} · `+
     `⚔️ ${Math.floor(wars)} · 🏠 ${houses.length}`;
 }
 
@@ -1304,6 +1468,7 @@ function showPerson(p){
     <button id="closeInspector" style="float:right">✕</button>
     <h3>👤 ${p.name}</h3>
     <p><b>Role:</b> ${role}</p>
+    <p><b>Gender:</b> ${p.gender==="male"?"Male":"Female"}</p>
     <p><b>Age:</b> ${Math.floor(p.age)}</p>
     <p><b>Partner:</b> ${p.partner?p.partner.name:"None"}</p>
     <p><b>Tribe:</b> ${p.tribe?p.tribe.name:"Independent"}</p>
@@ -1394,7 +1559,8 @@ function showHistory(){
         .join("")}
     </div>
     <p><b>Tribes:</b> ${tribes.length}</p>
-    <p style="font-size:11px;opacity:.75">Births happen only when two living adults pair and stay together. No random people spawn.</p>
+    <p style="font-size:11px;opacity:.75">History shows major events only: discoveries, tribes, kingdoms, wars, disasters, and breakthroughs.</p>
+    <p><b>Resources:</b> ${resources.length} deposits · ${resources.filter(r=>r.discovered).length} discovered</p>
     <p><b>Natural world:</b> ${naturalObjects.length} discoveries · ${disasters.length} active events</p>
     <p><b>Recent events:</b></p>
     ${events.slice(0,20).map(e=>`<div class="event"><b>${e.year}</b> ${e.text}</div>`).join("")}
@@ -1427,6 +1593,7 @@ canvas.addEventListener("pointerup",()=>painting=false);
 canvas.addEventListener("pointercancel",()=>painting=false);
 
 canvas.addEventListener("click",e=>{
+  if(massTraitMode)return;
   if(tool==="people")inspectNearest(e);
   else if(tool==="kingdom")inspectKingdom(e);
 });
@@ -1515,6 +1682,165 @@ document.getElementById("newWorld").onclick=()=>{
    ========================================================= */
 
 let frame=0;
+
+/* =========================================================
+   MOBILE MASS TRAIT EXPERIMENT TOOL
+   ========================================================= */
+
+let massTraitMode=false;
+let massDragging=false;
+let massStart=null;
+let massEnd=null;
+let massSelected=[];
+
+function canvasPoint(ev){
+  const r=canvas.getBoundingClientRect();
+  const clientX=ev.clientX ?? ev.touches?.[0]?.clientX ?? 0;
+  const clientY=ev.clientY ?? ev.touches?.[0]?.clientY ?? 0;
+  return {
+    x:(clientX-r.left)*(W/r.width),
+    y:(clientY-r.top)*(H/r.height)
+  };
+}
+
+function updateMassSelection(){
+  if(!massStart||!massEnd)return;
+
+  const x1=Math.min(massStart.x,massEnd.x);
+  const x2=Math.max(massStart.x,massEnd.x);
+  const y1=Math.min(massStart.y,massEnd.y);
+  const y2=Math.max(massStart.y,massEnd.y);
+
+  massSelected=people.filter(p=>{
+    if(!p.alive)return false;
+    const px=p.x*CELL+CELL/2;
+    const py=p.y*CELL+CELL/2;
+    return px>=x1&&px<=x2&&py>=y1&&py<=y2;
+  });
+
+  const apply=document.getElementById("massTraitApply");
+  const status=document.getElementById("massTraitStatus");
+  if(apply){
+    apply.disabled=massSelected.length===0;
+    apply.textContent=`Apply to ${massSelected.length} people`;
+  }
+  if(status)
+    status.textContent=`${massSelected.length} people selected. Drag again to change the area.`;
+}
+
+function applyMassTrait(){
+  const trait=document.getElementById("massTraitChoice")?.value;
+  if(!trait||!massSelected.length)return;
+
+  for(const p of massSelected){
+    if(trait==="Remove"){
+      p.traits=[];
+    }else if(!p.traits.includes(trait)){
+      p.traits.push(trait);
+    }
+  }
+
+  addEvent(`🧪 Experiment: ${massSelected.length} people were given ${trait==="Remove"?"their traits were cleared":trait+".toLowerCase()}.`);
+  refreshEvents();
+
+  massSelected=[];
+  massStart=null;
+  massEnd=null;
+  updateMassSelection();
+  exitMassTrait();
+}
+
+function enterMassTrait(){
+  massTraitMode=true;
+  massDragging=false;
+  massStart=null;
+  massEnd=null;
+  massSelected=[];
+  canvas.classList.add("massSelecting");
+
+  const button=document.getElementById("massTraitToggle");
+  const status=document.getElementById("massTraitStatus");
+  if(button)button.textContent="Drag on Map";
+  if(status)status.textContent="Drag a box over people to select them.";
+  updateMassSelection();
+}
+
+function exitMassTrait(){
+  massTraitMode=false;
+  massDragging=false;
+  massStart=null;
+  massEnd=null;
+  massSelected=[];
+  canvas.classList.remove("massSelecting");
+
+  const button=document.getElementById("massTraitToggle");
+  const status=document.getElementById("massTraitStatus");
+  if(button)button.textContent="Select Area";
+  if(status)status.textContent="Tap Select Area, then drag on the map.";
+
+  const apply=document.getElementById("massTraitApply");
+  if(apply){
+    apply.disabled=true;
+    apply.textContent="Apply to 0 people";
+  }
+}
+
+function massPointerDown(e){
+  if(!massTraitMode)return;
+  e.preventDefault();
+  const p=canvasPoint(e);
+  massDragging=true;
+  massStart=p;
+  massEnd=p;
+  updateMassSelection();
+}
+
+function massPointerMove(e){
+  if(!massTraitMode||!massDragging)return;
+  e.preventDefault();
+  massEnd=canvasPoint(e);
+  updateMassSelection();
+}
+
+function massPointerUp(e){
+  if(!massTraitMode||!massDragging)return;
+  e.preventDefault();
+  massEnd=canvasPoint(e);
+  massDragging=false;
+  updateMassSelection();
+}
+
+document.addEventListener("DOMContentLoaded",()=>{
+  document.getElementById("massTraitToggle")?.addEventListener("click",()=>{
+    if(massTraitMode)exitMassTrait();
+    else enterMassTrait();
+  });
+  document.getElementById("massTraitApply")?.addEventListener("click",applyMassTrait);
+  document.getElementById("massTraitCancel")?.addEventListener("click",exitMassTrait);
+
+  canvas.addEventListener("pointerdown",massPointerDown,{passive:false});
+  canvas.addEventListener("pointermove",massPointerMove,{passive:false});
+  canvas.addEventListener("pointerup",massPointerUp,{passive:false});
+  canvas.addEventListener("pointercancel",massPointerUp,{passive:false});
+});
+
+function drawMassSelection(){
+  if(!massTraitMode||!massStart||!massEnd)return;
+
+  const x=Math.min(massStart.x,massEnd.x);
+  const y=Math.min(massStart.y,massEnd.y);
+  const w=Math.abs(massEnd.x-massStart.x);
+  const h=Math.abs(massEnd.y-massStart.y);
+
+  ctx.save();
+  ctx.fillStyle="#66aaff22";
+  ctx.strokeStyle="#8bc7ff";
+  ctx.lineWidth=2;
+  ctx.fillRect(x,y,w,h);
+  ctx.strokeRect(x,y,w,h);
+  ctx.restore();
+}
+
 function loop(){
   simulate();
   draw();
